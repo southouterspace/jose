@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>System Architecture — Two Machines, One Seam</title>
+<style>
+  :root{
+    --bg:#0c0f14;
+    --panel:#12161f;
+    --panel-2:#161b26;
+    --line:#232a38;
+    --ink:#e6e9ef;
+    --ink-dim:#9aa4b6;
+    --ink-faint:#5e6878;
+
+    /* machine sides */
+    --rust:#e08641;        /* worker / brain */
+    --rust-soft:#3a2a1a;
+    --rust-line:#5a3c20;
+    --js:#56a8d6;          /* main thread / hands + eyes */
+    --js-soft:#16303f;
+    --js-line:#234c63;
+
+    /* DDD stereotypes (carried from prior artifacts) */
+    --entity:#e08641;
+    --value:#6f9fc4;
+    --service:#a988d6;
+    --ref:#5cab78;
+    --render:#d8b24a;
+
+    --seam:#8a7fd0;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;
+    background:
+      radial-gradient(1200px 600px at 50% -10%, #141a26 0%, transparent 60%),
+      var(--bg);
+    color:var(--ink);
+    font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace}
+  .wrap{max-width:1180px;margin:0 auto;padding:34px 22px 90px}
+
+  /* header */
+  header{margin-bottom:30px}
+  .ey{font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--ink-faint);font-family:ui-monospace,monospace}
+  h1{font-size:clamp(28px,4.4vw,46px);line-height:1.04;margin:.32em 0 .15em;letter-spacing:-.018em;font-weight:680}
+  h1 .seam-word{color:var(--seam)}
+  .sub{color:var(--ink-dim);max-width:60ch;font-size:15px}
+  .ver{margin-top:14px;display:inline-flex;gap:8px;align-items:center;font-size:11px;color:var(--ink-faint);font-family:ui-monospace,monospace}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--ref)}
+
+  /* pipeline strip — signature carry-over */
+  .pipe{
+    margin:26px 0 8px;border:1px solid var(--line);border-radius:12px;
+    background:linear-gradient(180deg,var(--panel),var(--bg));
+    padding:14px 14px;overflow-x:auto;
+  }
+  .pipe-row{display:flex;align-items:stretch;gap:0;min-width:760px}
+  .stage{flex:1;display:flex;flex-direction:column;gap:5px;padding:8px 12px;position:relative}
+  .stage:not(:last-child)::after{
+    content:"→";position:absolute;right:-7px;top:50%;transform:translateY(-50%);
+    color:var(--ink-faint);font-size:13px;z-index:2;
+  }
+  .stage .s-name{font-size:12px;font-weight:620;letter-spacing:-.01em}
+  .stage .s-own{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;font-family:ui-monospace,monospace}
+  .own-rust .s-own{color:var(--rust)} .own-rust .s-name{color:#f0c79a}
+  .own-js .s-own{color:var(--js)} .own-js .s-name{color:#bfe0f3}
+  .own-rust{border-top:2px solid var(--rust-line)}
+  .own-js{border-top:2px solid var(--js-line)}
+  .pipe-key{display:flex;gap:18px;margin-top:12px;padding:0 4px;font-size:11px;color:var(--ink-dim);flex-wrap:wrap}
+  .pipe-key b{font-weight:600}
+  .swatch{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:middle}
+
+  h2{font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);font-family:ui-monospace,monospace;margin:54px 0 16px;font-weight:600;display:flex;align-items:center;gap:10px}
+  h2::before{content:"";width:18px;height:1px;background:var(--line)}
+  .lead{color:var(--ink-dim);max-width:74ch;margin:-4px 0 22px;font-size:14.5px}
+  .lead strong{color:var(--ink);font-weight:620}
+
+  /* THE SEAM — signature element */
+  .machines{display:grid;grid-template-columns:1fr 132px 1fr;gap:0;align-items:stretch}
+  .machine{border:1px solid var(--line);padding:20px 18px;background:var(--panel)}
+  .m-rust{border-color:var(--rust-line);border-radius:12px 0 0 12px;background:linear-gradient(180deg,rgba(224,134,65,.05),transparent)}
+  .m-js{border-color:var(--js-line);border-radius:0 12px 12px 0;background:linear-gradient(180deg,rgba(86,168,214,.05),transparent)}
+  .m-head{display:flex;flex-direction:column;gap:3px;margin-bottom:6px}
+  .m-tag{font-family:ui-monospace,monospace;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase}
+  .m-rust .m-tag{color:var(--rust)} .m-js .m-tag{color:var(--js)}
+  .m-title{font-size:18px;font-weight:660;letter-spacing:-.01em}
+  .m-role{font-size:12.5px;color:var(--ink-dim)}
+  .m-list{list-style:none;margin:16px 0 0;padding:0;display:flex;flex-direction:column;gap:1px}
+  .m-list li{padding:9px 11px;border-radius:7px;background:var(--panel-2);font-size:13px;display:flex;flex-direction:column;gap:2px}
+  .m-list li .t{font-weight:560}
+  .m-list li .d{font-size:11.5px;color:var(--ink-faint);line-height:1.35}
+  .m-rust .m-list li{border-left:2px solid var(--rust-line)}
+  .m-js .m-list li{border-left:2px solid var(--js-line)}
+
+  /* spine */
+  .spine{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 4px}
+  .spine-rail{position:absolute;top:18px;bottom:18px;width:2px;left:50%;transform:translateX(-50%);
+    background:repeating-linear-gradient(180deg,var(--seam) 0 6px,transparent 6px 12px);opacity:.55}
+  .spine-cap{position:relative;z-index:2;background:var(--bg);border:1px solid var(--seam);color:var(--seam);
+    font-family:ui-monospace,monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;
+    padding:5px 8px;border-radius:20px;text-align:center;margin:7px 0;width:108px;line-height:1.35}
+  .spine-cap small{display:block;color:var(--ink-faint);letter-spacing:.04em;text-transform:none;font-size:9px;margin-top:2px}
+  .spine-flow{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:2px;margin:10px 0}
+  .arrow{font-size:13px}
+  .arrow.r{color:var(--js)} .arrow.l{color:var(--rust)}
+  .spine-lab{font-size:9px;color:var(--ink-faint);font-family:ui-monospace,monospace;text-align:center;max-width:104px;line-height:1.4}
+
+  /* boundary channels */
+  .channels{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px}
+  .chan{border:1px solid var(--line);border-radius:10px;padding:16px 16px;background:var(--panel)}
+  .chan h3{margin:0 0 4px;font-size:14px;letter-spacing:-.01em}
+  .chan .badge{font-family:ui-monospace,monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seam);display:block;margin-bottom:8px}
+  .chan p{margin:0;font-size:12.5px;color:var(--ink-dim)}
+  .chan .way{margin-top:10px;font-size:11px;color:var(--ink-faint);font-family:ui-monospace,monospace}
+
+  /* preview/commit sequence */
+  .seq{counter-reset:step;display:flex;flex-direction:column;gap:0;border-left:1px solid var(--line);margin-left:8px}
+  .step{position:relative;padding:14px 0 18px 30px}
+  .step::before{counter-increment:step;content:counter(step);position:absolute;left:-12px;top:13px;
+    width:23px;height:23px;border-radius:50%;background:var(--panel-2);border:1px solid var(--line);
+    display:flex;align-items:center;justify-content:center;font-family:ui-monospace,monospace;font-size:11px;color:var(--ink-dim)}
+  .step .where{font-family:ui-monospace,monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:3px}
+  .step.js .where{color:var(--js)} .step.rust .where{color:var(--rust)} .step.seam .where{color:var(--seam)}
+  .step .what{font-size:14px;font-weight:560}
+  .step .why{font-size:12.5px;color:var(--ink-dim);margin-top:3px;max-width:72ch}
+  .step.js::before{border-color:var(--js-line)} .step.rust::before{border-color:var(--rust-line)} .step.seam::before{border-color:var(--seam)}
+
+  /* critical review cards */
+  .crit{display:flex;flex-direction:column;gap:12px}
+  .card{border:1px solid var(--line);border-radius:11px;background:var(--panel);overflow:hidden}
+  .card-top{display:flex;align-items:flex-start;gap:14px;padding:15px 17px;cursor:pointer;user-select:none}
+  .card-top:hover{background:var(--panel-2)}
+  .card-n{font-family:ui-monospace,monospace;font-size:12px;color:var(--ink-faint);padding-top:2px;min-width:22px}
+  .card-q{flex:1}
+  .card-q .qt{font-size:15px;font-weight:600;letter-spacing:-.01em}
+  .card-q .qmeta{font-size:12px;color:var(--ink-dim);margin-top:3px}
+  .verdict{flex-shrink:0;font-family:ui-monospace,monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    padding:5px 9px;border-radius:6px;white-space:nowrap;align-self:center}
+  .v-split{background:rgba(138,127,208,.13);color:var(--seam);border:1px solid rgba(138,127,208,.3)}
+  .v-rust{background:rgba(224,134,65,.12);color:var(--rust);border:1px solid var(--rust-line)}
+  .v-js{background:rgba(86,168,214,.12);color:var(--js);border:1px solid var(--js-line)}
+  .card-body{display:none;padding:0 17px 17px 53px;font-size:13px;color:var(--ink-dim)}
+  .card.open .card-body{display:block}
+  .card.open .card-top{background:var(--panel-2)}
+  .chev{color:var(--ink-faint);font-size:12px;align-self:center;transition:transform .15s}
+  .card.open .chev{transform:rotate(90deg)}
+  .card-body .row{display:flex;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line)}
+  .card-body .row:last-child{border-bottom:none}
+  .card-body .row .k{font-family:ui-monospace,monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);min-width:80px;padding-top:1px}
+  .card-body .row .v{flex:1;color:var(--ink)}
+  .card-body .row .v.dim{color:var(--ink-dim)}
+
+  /* layer stack */
+  .stack{display:flex;flex-direction:column;gap:6px}
+  .layer{border:1px solid var(--line);border-radius:9px;padding:13px 16px;display:flex;align-items:center;gap:16px;background:var(--panel)}
+  .layer .lvl{font-family:ui-monospace,monospace;font-size:11px;color:var(--ink-faint);min-width:18px}
+  .layer .lname{font-weight:600;font-size:14px;min-width:200px}
+  .layer .ldesc{font-size:12.5px;color:var(--ink-dim);flex:1}
+  .layer .lside{font-family:ui-monospace,monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;padding:4px 8px;border-radius:5px}
+  .ls-rust{background:var(--rust-soft);color:var(--rust)}
+  .ls-js{background:var(--js-soft);color:var(--js)}
+  .ls-seam{background:rgba(138,127,208,.12);color:var(--seam)}
+  .ls-be{background:#1c2230;color:var(--ink-dim)}
+
+  /* rules */
+  .rules{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .rule{border:1px solid var(--line);border-left:3px solid var(--seam);border-radius:8px;padding:14px 16px;background:var(--panel)}
+  .rule .rt{font-weight:620;font-size:13.5px;margin-bottom:4px}
+  .rule .rd{font-size:12.5px;color:var(--ink-dim)}
+
+  footer{margin-top:60px;padding-top:20px;border-top:1px solid var(--line);font-size:11px;color:var(--ink-faint);font-family:ui-monospace,monospace;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+
+  @media(max-width:860px){
+    .machines{grid-template-columns:1fr}
+    .m-rust{border-radius:12px 12px 0 0}
+    .m-js{border-radius:0 0 12px 12px}
+    .spine{flex-direction:row;padding:12px 0;gap:14px}
+    .spine-rail{top:50%;bottom:auto;left:18px;right:18px;width:auto;height:2px;transform:translateY(-50%);
+      background:repeating-linear-gradient(90deg,var(--seam) 0 6px,transparent 6px 12px)}
+    .channels,.rules{grid-template-columns:1fr}
+    .layer{flex-wrap:wrap}
+    .layer .lname{min-width:0}
+  }
+  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="ey">Parametric Residential Design Tool · System Architecture</div>
+    <h1>Two machines, <span class="seam-word">one seam</span>.</h1>
+    <p class="sub">The parametric engine and the drawing engine are not one program fighting itself. They are two machines on opposite sides of a thread boundary — and the stack works <em>because</em> they stay apart.</p>
+    <div class="ver"><span class="dot"></span> arch v0.1 · supersedes the "backend = system of record" framing for live editing</div>
+  </header>
+
+  <!-- PIPELINE STRIP (signature carry-over), now colored by ownership -->
+  <div class="pipe">
+    <div class="pipe-row">
+      <div class="stage own-js"><span class="s-own">JS</span><span class="s-name">Geometry edit</span></div>
+      <div class="stage own-rust"><span class="s-own">Rust</span><span class="s-name">Building model</span></div>
+      <div class="stage own-rust"><span class="s-own">Rust</span><span class="s-name">Placement</span></div>
+      <div class="stage own-rust"><span class="s-own">Rust</span><span class="s-name">Structural check</span></div>
+      <div class="stage own-rust"><span class="s-own">Rust</span><span class="s-name">Cut optimization</span></div>
+      <div class="stage own-rust"><span class="s-own">Rust</span><span class="s-name">Supplier constraint</span></div>
+      <div class="stage own-rust"><span class="s-own">Rust→JS</span><span class="s-name">Drawings export</span></div>
+    </div>
+    <div class="pipe-key">
+      <span><span class="swatch" style="background:var(--rust)"></span><b>Rust worker</b> — the dependency graph, made live &amp; incremental</span>
+      <span><span class="swatch" style="background:var(--js)"></span><b>JS main thread</b> — where the cursor and the pixels live</span>
+    </div>
+  </div>
+  <p class="lead" style="margin-top:18px">The pipeline you already designed <strong>is</strong> the parametric engine. Each stage is dirty-driven off the one before it. Nothing new to invent — just make that chain live, incremental, and resident in Rust. Only the first stage (capturing the edit) and the last (laying out the sheet) touch the main thread.</p>
+
+  <!-- THE SEAM -->
+  <h2>The split</h2>
+  <p class="lead">One owns truth. One owns feel. The dashed spine between them is the only place they touch.</p>
+
+  <div class="machines">
+    <!-- RUST -->
+    <div class="machine m-rust">
+      <div class="m-head">
+        <span class="m-tag">◆ Rust · Web Worker</span>
+        <span class="m-title">The brain</span>
+        <span class="m-role">Deterministic, CPU-bound, off the render thread. In-session system of record.</span>
+      </div>
+      <ul class="m-list">
+        <li><span class="t">Geometry kernel — truck (BREP)</span><span class="d">Solids, faces, booleans, sweeps. The floor everything stands on.</span></li>
+        <li><span class="t">Dependency graph + recompute</span><span class="d">The parametric engine itself. Wall length changes → propagate dirty → resolve only what moved.</span></li>
+        <li><span class="t">Framing solver</span><span class="d">Stud layout, corners, openings (king/jack/header/cripple).</span></li>
+        <li><span class="t">Loads &amp; analysis</span><span class="d">Dead-load rollup, tributary area, load path — a traversal over the connection graph.</span></li>
+        <li><span class="t">Structural check (NDS)</span><span class="d">Design values, adjustment factors, buckling. Produces pass/fail flags.</span></li>
+        <li><span class="t">Cut optimizer</span><span class="d">1D cutting-stock, offcut pool, smart-match reuse. NP-hard — belongs here.</span></li>
+        <li><span class="t">Canonical model (SoA tick arrays)</span><span class="d">Integer 1/32" geometry in linear memory. The single source of truth.</span></li>
+        <li><span class="t">Undo / redo history</span><span class="d">Owns state ⇒ owns the inverse log. <em>(moved here — see review #2)</em></span></li>
+      </ul>
+    </div>
+
+    <!-- SPINE -->
+    <div class="spine">
+      <div class="spine-rail"></div>
+      <div class="spine-cap">The boundary<small>wasm-bindgen + shared memory</small></div>
+      <div class="spine-flow">
+        <span class="arrow r mono">▶ commands</span>
+        <span class="spine-lab">intents in</span>
+      </div>
+      <div class="spine-flow">
+        <span class="arrow l mono">◀ dirty ranges</span>
+        <span class="spine-lab">changed buffers out</span>
+      </div>
+      <div class="spine-cap" style="border-style:dashed">zero-copy<small>JS reads the same buffer</small></div>
+    </div>
+
+    <!-- JS -->
+    <div class="machine m-js">
+      <div class="m-head">
+        <span class="m-tag">◇ JavaScript · Main Thread</span>
+        <span class="m-title">The hands &amp; eyes</span>
+        <span class="m-role">Coupled to the GPU and the cursor. Holds a render mirror, never the truth.</span>
+      </div>
+      <ul class="m-list">
+        <li><span class="t">Three.js + WebGPU renderer</span><span class="d">One 3D scene. Plan/elevation are orthographic cameras, not a second renderer.</span></li>
+        <li><span class="t">Render mirror</span><span class="d">Typed-array views over Rust's buffers. Read-only. One-way: model → pixels.</span></li>
+        <li><span class="t">ToolRunner + ToolDefinition catalog</span><span class="d">One state machine + a flyweight catalog. Orchestrates picks; emits ops as commands.</span></li>
+        <li><span class="t">Snap query + ValueInput</span><span class="d">Per-mouse-move snapping against a local index. Modal measurement buffer.</span></li>
+        <li><span class="t">Preview overlay (the "ghost")</span><span class="d">Throwaway visual move during drag. Deliberately dumb — does not reframe. <em>(review #4)</em></span></li>
+        <li><span class="t">Check visualization</span><span class="d">Renders the pass/fail flags Rust produced (overstressed member → red).</span></li>
+        <li><span class="t">UI chrome — React + Zustand</span><span class="d">Panels, menus, value entry. The model never lives in React state.</span></li>
+        <li><span class="t">Sheet layout for export</span><span class="d">Styling, dimensions, title block over the linework Rust projected. <em>(review #3)</em></span></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- BOUNDARY CONTRACT -->
+  <h2>The boundary contract</h2>
+  <p class="lead"><strong>Two channels, never one.</strong> The mistake is running the model through RPC. Calls are cheap and occasional; the model is huge and constant. So they don't travel the same road.</p>
+  <div class="channels">
+    <div class="chan">
+      <span class="badge">Channel A — calls</span>
+      <h3>Commands &amp; events via wasm-bindgen</h3>
+      <p>Low volume — one per user action. JS sends intents ("push face N by 3½″"); Rust returns which buffer ranges changed. Ergonomics and compile-time type safety win here; the copy cost is negligible at this volume.</p>
+      <div class="way">JS → intent → Rust · Rust → dirty-ranges → JS</div>
+    </div>
+    <div class="chan">
+      <span class="badge">Channel B — state</span>
+      <h3>The model via shared linear memory</h3>
+      <p>Rust owns the SoA tick arrays in WASM memory; JS makes typed-array views over the same bytes to render. Zero-copy, no marshaling, every frame. Layout offsets are generated from the one MODEL source so the two sides can't drift.</p>
+      <div class="way">one buffer · read-only from JS · pass by reference, never by copy</div>
+    </div>
+  </div>
+
+  <!-- PREVIEW / COMMIT -->
+  <h2>Why dragging never feels the boundary</h2>
+  <p class="lead">The fear: every drag frame round-trips to Rust and the recompute makes it lag. The fix: <strong>preview never crosses the seam.</strong> Two phases.</p>
+  <div class="seq">
+    <div class="step js"><div class="where">JS · main thread</div><div class="what">Drag begins — the ghost moves</div><div class="why">The drawing engine moves geometry <em>visually only</em>. Cheap, throwaway, instant. Rust is not consulted. This is the SketchUp trick: drag feedback is a lightweight overlay, not a real solve.</div></div>
+    <div class="step js"><div class="where">JS · main thread</div><div class="what">Snapping resolves locally</div><div class="why">Per-mouse-move snap queries hit a local spatial index over the render mirror. Pixel-defined tolerance. Never round-trips.</div></div>
+    <div class="step seam"><div class="where">Seam · on release / typed value</div><div class="what">Intent crosses as one command</div><div class="why">Now — and only now — the committed op travels Channel A. One message, not one-per-frame.</div></div>
+    <div class="step rust"><div class="where">Rust · worker</div><div class="what">Dirty propagation, incremental</div><div class="why">The dependency graph walks from the changed node and resolves only what depends on it — reframe studs, resize header, re-roll loads, re-check, re-optimize cuts. Coalesced recompute at model scale.</div></div>
+    <div class="step rust"><div class="where">Rust · worker</div><div class="what">Writes results, returns dirty ranges</div><div class="why">Updated geometry lands in shared memory. Rust hands back only the changed buffer spans.</div></div>
+    <div class="step js"><div class="where">JS · main thread</div><div class="what">Ghost swaps for truth, dirty-only redraw</div><div class="why">The drawing engine drops the overlay and renders the real result — only the ranges that changed. The new framing appears here, on commit, not during the drag.</div></div>
+  </div>
+
+  <!-- CRITICAL REVIEW -->
+  <h2>Critical placement review</h2>
+  <p class="lead">The naive line is "interaction → JS, compute → Rust." Mostly right. But five things don't sit where that rule first puts them. Tap to expand.</p>
+  <div class="crit" id="crit">
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-n">01</div>
+        <div class="card-q"><div class="qt">The snap acceleration structure</div><div class="qmeta">Naive call: "snapping is interaction, so it's all JS."</div></div>
+        <div class="verdict v-split">Split</div>
+        <span class="chev">▸</span>
+      </div>
+      <div class="card-body">
+        <div class="row"><div class="k">Build</div><div class="v">Rust, on commit — the spatial index (BVH) over thousands of members is real geometry work.</div></div>
+        <div class="row"><div class="k">Query</div><div class="v">JS, per mouse-move — reads the structure straight out of shared memory.</div></div>
+        <div class="row"><div class="k">Why</div><div class="v dim">If the index lived only in Rust, every mousemove would round-trip and snapping would lag. If it were built in JS, you'd rebuild a heavy structure on the render thread. Build heavy in Rust, query light in JS. The structure is shared; the lookup is local.</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-n">02</div>
+        <div class="card-q"><div class="qt">Undo / redo history</div><div class="qmeta">Naive call: "commands originate in JS, so JS keeps the log."</div></div>
+        <div class="verdict v-rust">Rust</div>
+        <span class="chev">▸</span>
+      </div>
+      <div class="card-body">
+        <div class="row"><div class="k">Owner</div><div class="v">Rust — whoever owns canonical state owns undo.</div></div>
+        <div class="row"><div class="k">JS role</div><div class="v">Sends an "undo" intent. That's all.</div></div>
+        <div class="row"><div class="k">Why</div><div class="v dim">Undo must restore the model <em>exactly</em>, including every derived recompute (loads, cuts, checks). A JS-side command log couldn't reconstruct that without replaying through Rust anyway — so the authoritative inverse log lives where the state lives. Transient in-progress tool state stays in JS; committed history is Rust's.</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-n">03</div>
+        <div class="card-q"><div class="qt">Document export — the "one true 2D path"</div><div class="qmeta">Naive call: "2D output, so it's a JS concern."</div></div>
+        <div class="verdict v-split">Split</div>
+        <span class="chev">▸</span>
+      </div>
+      <div class="card-body">
+        <div class="row"><div class="k">Rust</div><div class="v">Projection + hidden-line removal. HLR over a BREP solid is heavy geometry — it belongs next to the kernel.</div></div>
+        <div class="row"><div class="k">JS</div><div class="v">Sheet composition — line weights, dimensions, hatching, title block, SVG/PDF assembly.</div></div>
+        <div class="row"><div class="k">Why</div><div class="v dim">"2D" hid two different jobs. The math of <em>what lines are visible from this view</em> is geometry (Rust). The craft of <em>arranging them on a D-size sheet</em> is layout (JS). Non-interactive and derived either way — runs on the one-way chain, not per frame.</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-n">04</div>
+        <div class="card-q"><div class="qt">Preview geometry during a drag</div><div class="qmeta">Naive call: "show the user the real result as they drag."</div></div>
+        <div class="verdict v-js">JS — and deliberately dumb</div>
+        <span class="chev">▸</span>
+      </div>
+      <div class="card-body">
+        <div class="row"><div class="k">Does</div><div class="v">Moves existing geometry visually. Instant.</div></div>
+        <div class="row"><div class="k">Does not</div><div class="v">Reframe. New studs, resized headers, re-rolled loads do <em>not</em> appear mid-drag.</div></div>
+        <div class="row"><div class="k">Why</div><div class="v dim">An accurate live preview would need the full solver every frame — the exact lag we're avoiding. So the ghost is honest about being a ghost: it shows the move, not the consequences. Consequences land on release. This is a UX decision, stated on purpose, not a limitation to apologize for.</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-n">05</div>
+        <div class="card-q"><div class="qt">Structural check results</div><div class="qmeta">Naive call: "checking is compute (Rust), done."</div></div>
+        <div class="verdict v-split">Split</div>
+        <span class="chev">▸</span>
+      </div>
+      <div class="card-body">
+        <div class="row"><div class="k">Compute</div><div class="v">Rust — NDS math produces a pass/fail flag per member, written into shared memory.</div></div>
+        <div class="row"><div class="k">Surface</div><div class="v">JS — reads the flag and colors the member (overstressed → red), draws the callout.</div></div>
+        <div class="row"><div class="k">Why</div><div class="v dim">The verdict is data; the way you <em>see</em> the verdict is rendering. Keeping the flag in the shared buffer means the highlight costs nothing extra — it's just another column the render mirror already reads.</div></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- LAYER STACK -->
+  <h2>The stack, bottom to top</h2>
+  <div class="stack">
+    <div class="layer"><span class="lvl">7</span><span class="lname">Persistence</span><span class="ldesc">Neon (Postgres) + Drizzle. Snapshots of the model; stamps legal deliverables. Cloudflare Workers thin at the edge; R2 holds exported PDFs.</span><span class="lside ls-be">Backend</span></div>
+    <div class="layer"><span class="lvl">6</span><span class="lname">UI chrome</span><span class="ldesc">React + Zustand. Panels, menus, value entry. Never holds the model.</span><span class="lside ls-js">JS main</span></div>
+    <div class="layer"><span class="lvl">5</span><span class="lname">Drawing engine</span><span class="ldesc">Three.js + WebGPU scene, ortho cameras, ToolRunner, snap query, preview overlay.</span><span class="lside ls-js">JS main</span></div>
+    <div class="layer"><span class="lvl">4</span><span class="lname">Boundary</span><span class="ldesc">wasm-bindgen for commands · shared linear memory for the model. Two channels.</span><span class="lside ls-seam">Seam</span></div>
+    <div class="layer"><span class="lvl">3</span><span class="lname">Domain model — the parametric engine</span><span class="ldesc">Dependency graph, framing solver, loads, structural check, cut optimizer. The live pipeline.</span><span class="lside ls-rust">Rust worker</span></div>
+    <div class="layer"><span class="lvl">2</span><span class="lname">Canonical store</span><span class="ldesc">SoA tick arrays (1/32"), connection graph, undo log. In-session system of record.</span><span class="lside ls-rust">Rust worker</span></div>
+    <div class="layer"><span class="lvl">1</span><span class="lname">Geometry kernel — truck</span><span class="ldesc">BREP solids, faces, booleans, sweeps. Rust-native — one language, one memory space.</span><span class="lside ls-rust">Rust worker</span></div>
+  </div>
+
+  <!-- RULES -->
+  <h2>The two rules that keep them from fighting</h2>
+  <div class="rules">
+    <div class="rule"><div class="rt">Rust owns canonical geometry. JS owns a mirror.</div><div class="rd">One direction: parametric → render. JS never mutates the model — it emits intents and reads results. Single source of truth holds across the boundary.</div></div>
+    <div class="rule"><div class="rt">Anything per-mouse-move stays local.</div><div class="rd">Snap queries, preview, picking — all run on the main thread against shared memory. The seam is crossed on commit, never on motion. That's what makes one tool out of two machines.</div></div>
+  </div>
+
+  <footer>
+    <span>Parametric Residential Design Tool · architecture.html</span>
+    <span>Rust/WASM worker · wasm-bindgen + shared memory · Three + WebGPU · truck · Neon/Cloudflare</span>
+  </footer>
+
+</div>
+<script>
+  document.querySelectorAll('#crit .card-top').forEach(function(t){
+    t.addEventListener('click',function(){ t.parentElement.classList.toggle('open'); });
+  });
+</script>
+</body>
+</html>

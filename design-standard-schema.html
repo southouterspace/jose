@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DesignStandard Strategy — Schema</title>
+<style>
+  :root{
+    --bg:#14161a; --bg2:#191c22; --card:#1e222a; --card2:#232831;
+    --line:#2c323d; --line2:#39414f;
+    --ink:#e8ebf0; --ink2:#aab2c0; --ink3:#727c8c;
+    --entity:#e0863c; --value:#5b9bd5; --reference:#5cb87a; --service:#a779d6; --render:#d4af40;
+    --mono:'SF Mono',ui-monospace,'Cascadia Code',Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1280px;margin:0 auto;padding:0 24px}
+
+  header{border-bottom:1px solid var(--line);background:linear-gradient(180deg,var(--bg2),var(--bg));position:sticky;top:0;z-index:20}
+  .head-inner{padding:18px 0 14px}
+  .titlerow{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+  h1{font-size:19px;font-weight:650;letter-spacing:-.01em}
+  .ver{font-family:var(--mono);font-size:11px;color:var(--ink3);border:1px solid var(--line2);padding:2px 7px;border-radius:5px}
+  .sub{color:var(--ink2);font-size:13px;margin-top:5px;max-width:880px}
+  .sub code,.thesis code,.fnote code,.gotchas code{font-family:var(--mono);font-size:.92em;color:var(--ink)}
+  .pairs{color:var(--ink3);font-size:11.5px;font-family:var(--mono);margin-top:7px}
+
+  .pipe{display:flex;align-items:center;gap:0;flex-wrap:wrap;margin-top:14px;font-family:var(--mono);font-size:10.5px}
+  .pstep{padding:4px 9px;border:1px solid var(--line2);border-radius:5px;color:var(--ink3);background:var(--card)}
+  .pstep.on{color:var(--bg);background:var(--render);border-color:var(--render);font-weight:650}
+  .parr{color:var(--ink3);padding:0 5px}
+
+  .legend{display:flex;gap:16px;flex-wrap:wrap;padding:10px 0 16px;font-size:11.5px;color:var(--ink2)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .dot{width:9px;height:9px;border-radius:2px;display:inline-block}
+
+  main{padding:8px 0 80px}
+  .thesis{background:linear-gradient(135deg,rgba(212,175,64,.10),rgba(212,175,64,.03));border:1px solid rgba(212,175,64,.32);border-radius:10px;padding:14px 16px;margin:14px 0 22px}
+  .thesis b{color:var(--render)}
+  .thesis p{font-size:13px;color:var(--ink2);margin-top:6px}
+
+  /* tier map */
+  .tiermap{margin:6px 0 26px;border:1px solid var(--line);border-radius:12px;background:var(--bg2);padding:16px}
+  .tiermap h3{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink2);margin-bottom:14px;font-weight:600}
+  .tier{border:1px solid var(--line2);border-radius:9px;padding:11px 12px;margin-bottom:6px}
+  .tier .tlab{font-family:var(--mono);font-size:10px;letter-spacing:.05em;color:var(--ink3);text-transform:uppercase;margin-bottom:8px}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .chip{font-family:var(--mono);font-size:10.5px;border:1px solid var(--line2);border-left-width:3px;border-radius:6px;padding:4px 8px;background:var(--card);color:var(--ink)}
+  .c-ref{border-left-color:var(--reference)} .c-val{border-left-color:var(--value)}
+  .c-svc{border-left-color:var(--service)} .c-ent{border-left-color:var(--entity)} .c-int{border-left-color:var(--render)}
+  .tier-core{border-color:rgba(91,155,213,.35)} .tier-seam{border-color:rgba(212,175,64,.5);background:rgba(212,175,64,.05)}
+  .tier-leaf{border-color:rgba(92,184,122,.35)}
+  .tflow{text-align:center;color:var(--ink3);font-size:13px;font-family:var(--mono);padding:2px 0}
+
+  /* field map table */
+  .fmap{margin:6px 0 30px}
+  .fmap h3{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink2);margin-bottom:10px;font-weight:600}
+  table.leaf{width:100%;border-collapse:collapse;font-size:11.5px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  table.leaf th,table.leaf td{padding:8px 10px;border:1px solid var(--line);vertical-align:top;text-align:left}
+  table.leaf th{background:var(--card2);font-family:var(--mono);font-size:10.5px;color:var(--ink2);font-weight:600}
+  table.leaf td:first-child{font-family:var(--mono);color:var(--ink2);white-space:nowrap;background:var(--bg2)}
+  table.leaf td{color:var(--ink2)} table.leaf code{font-family:var(--mono);color:var(--ink);font-size:.95em}
+  .wood-col{color:var(--reference)!important}
+
+  .gotchas{margin:24px 0 8px;border:1px solid rgba(224,134,60,.3);background:rgba(224,134,60,.05);border-radius:10px;padding:14px 16px}
+  .gotchas h3{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--entity);margin-bottom:8px;font-weight:600}
+  .gotchas li{list-style:none;font-size:12px;color:var(--ink2);padding:5px 0 5px 20px;position:relative}
+  .gotchas li:before{content:"⚠";position:absolute;left:0;color:var(--entity);font-size:11px}
+  .gotchas b{color:var(--ink)}
+
+  .group{margin:34px 0 0}
+  .ghead{display:flex;align-items:baseline;gap:12px;border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:16px}
+  .ghead h2{font-size:14px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:var(--ink2)}
+  .gnote{font-size:12px;color:var(--ink3)}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(370px,1fr));gap:14px}
+  .type{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;border-left-width:3px}
+  .type.seam{border-left-width:4px;box-shadow:0 0 0 1px rgba(212,175,64,.15)}
+  .type .top{display:flex;align-items:center;justify-content:space-between;padding:12px 14px 10px;cursor:pointer;user-select:none;gap:8px}
+  .tname{font-family:var(--mono);font-size:13.5px;font-weight:600}
+  .badge{font-family:var(--mono);font-size:9px;letter-spacing:.04em;padding:2px 6px;border-radius:4px;margin-left:6px;border:1px solid var(--line2);color:var(--ink3)}
+  .badge.wood{color:var(--reference);border-color:rgba(92,184,122,.4)}
+  .badge.stub{color:var(--ink3);border-style:dashed}
+  .stereo{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:4px;font-weight:650;white-space:nowrap}
+  .xref{font-family:var(--mono);font-size:9px;color:var(--ink3);border:1px dashed var(--line2);padding:1px 6px;border-radius:4px;margin-left:6px}
+  .one{padding:0 14px 10px;font-size:12.5px;color:var(--ink2)}
+  .body{padding:0 14px 14px;display:block}
+  .body.collapsed{display:none}
+
+  table.fields{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px}
+  table.fields td{padding:5px 6px;border-top:1px solid var(--line);vertical-align:top}
+  td.fn{font-family:var(--mono);color:var(--ink);white-space:nowrap;width:36%}
+  td.ft{font-family:var(--mono);color:var(--value);font-size:11px}
+  td.fnote{color:var(--ink3);font-size:11.5px}
+
+  .notes{margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+  .notes li{list-style:none;font-size:11.5px;color:var(--ink2);padding:3px 0 3px 16px;position:relative}
+  .notes li:before{content:"▸";position:absolute;left:0;color:var(--ink3)}
+  .rule{margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--render);background:rgba(212,175,64,.07);border:1px solid rgba(212,175,64,.22);border-radius:6px;padding:7px 9px;line-height:1.5}
+
+  .toggle{display:flex;gap:6px;margin:6px 14px 0}
+  .toggle button{font-family:var(--mono);font-size:10px;background:var(--card2);color:var(--ink3);border:1px solid var(--line2);border-radius:5px;padding:3px 9px;cursor:pointer}
+  .toggle button.active{color:var(--ink);border-color:var(--ink3)}
+  pre.json{display:none;margin:0 14px 14px;background:#0e1014;border:1px solid var(--line);border-radius:8px;padding:12px;overflow:auto;font-family:var(--mono);font-size:11px;color:#cdd6e3;line-height:1.45}
+  pre.json.show{display:block}
+
+  .footbar{margin-top:40px;border-top:1px solid var(--line);padding-top:18px;display:flex;gap:10px;flex-wrap:wrap}
+  .footbar button{font-family:var(--mono);font-size:11px;background:var(--card);color:var(--ink2);border:1px solid var(--line2);border-radius:6px;padding:8px 14px;cursor:pointer}
+  .footbar button:hover{border-color:var(--ink3);color:var(--ink)}
+  .caveat{font-size:11px;color:var(--ink3);max-width:880px;margin-top:14px;line-height:1.6}
+  .caveat b{color:var(--ink2)}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap head-inner">
+    <div class="titlerow">
+      <h1>DesignStandard Strategy</h1>
+      <span class="ver">material-seam · v0.1</span>
+    </div>
+    <div class="sub">Split by axis of change: what stays the same when you swap material lives in <b>shared core</b> exactly once; what changes lives behind <b>one interface</b>. ~75% reusable, one seam, a small enumerable leaf surface. Wood (NDS) fully populated; cold-formed steel (AISI) and concrete (ACI) stubbed.</div>
+    <div class="pairs">tiers: shared core · the seam · leaf data · rename: LumberStock/LumberSpec → Stock/StockSpec + material discriminator</div>
+    <div class="pipe" id="pipe"></div>
+  </div>
+</header>
+
+<div class="wrap"><div class="legend" id="legend"></div></div>
+
+<main class="wrap">
+  <div class="thesis">
+    <b>One seam, four supplies.</b>
+    <p>Every part of the shared core calls through a single <code>DesignStandard</code> interface and stays material-blind. Each implementation supplies exactly four things — <b>design values</b>, <b>modification factors</b>, a <b>LimitStateCheck[]</b> set, and a <b>connection-capacity method</b> — plus which load combination governs and the section basis. Statics (M=wL²/8), loads (ASCE 7), geometry, the arbiter, provenance, lookup, and the connection graph never move.</p>
+  </div>
+
+  <!-- TIER MAP -->
+  <div class="tiermap">
+    <h3>Three tiers, split by axis of change</h3>
+    <div class="tier tier-core">
+      <div class="tlab">Tier 1 · Shared core — material-blind, one copy</div>
+      <div class="chips">
+        <span class="chip c-ent">Stock + material/form</span>
+        <span class="chip c-val">SectionProperties (A,S,I)</span>
+        <span class="chip c-val">LoadContext / Combination</span>
+        <span class="chip c-svc">BeamStatics</span>
+        <span class="chip c-svc">SizingArbiter</span>
+        <span class="chip c-val">LimitStateCheck</span>
+        <span class="chip c-ent">ConnectionGraph</span>
+        <span class="chip c-ref">Provenance · Lookup</span>
+      </div>
+    </div>
+    <div class="tflow">↓ calls through ↓</div>
+    <div class="tier tier-seam">
+      <div class="tlab">Tier 2 · The one seam</div>
+      <div class="chips"><span class="chip c-int">DesignStandard ⟨interface⟩</span><span class="chip c-val">DesignPhilosophy (ASD|LRFD)</span></div>
+    </div>
+    <div class="tflow">↓ resolves to ↓</div>
+    <div class="tier tier-leaf">
+      <div class="tlab">Tier 3 · Leaf implementations — per material, plugged in</div>
+      <div class="chips">
+        <span class="chip c-ref">NDS · wood ✓</span>
+        <span class="chip c-ref">AISI · cold-formed steel ⋯</span>
+        <span class="chip c-ref">ACI · concrete ⋯</span>
+        <span class="chip c-ref">AISC · hot-rolled ⋯</span>
+        <span class="chip c-ref">TMS · masonry ⋯</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- LEAF FIELD MAP -->
+  <div class="fmap">
+    <h3>Material-specific field map — what each leaf must supply</h3>
+    <table class="leaf">
+      <tr><th>Slot</th><th class="wood-col">Wood · NDS ✓</th><th>Cold-formed steel · AISI</th><th>Concrete · ACI</th></tr>
+      <tr><td>Design values</td><td>Fb, Fv, Fc∥, <code>Fc⊥</code>, E, Emin, G</td><td>Fy, Fu, E=29,000 (const)</td><td>f′c, Ec, rebar fy</td></tr>
+      <tr><td>Spec keys</td><td>species, grade, sizeClass</td><td>mil/thickness, yield 33/50, profile</td><td>bar size, cover, mix</td></tr>
+      <tr><td>Modification factors</td><td>CD, CM, CF, Cr, CP, Cfu, Ci</td><td>φ/Ω, effective-width Q, hole reduction</td><td>φ (0.9 flex / 0.75 shear), creep, ρ min/max</td></tr>
+      <tr><td>Extra limit states</td><td>CP column buckling, Fc⊥ bearing</td><td>local + distortional + LTB buckling, web crippling</td><td>cracked-section flexure, stirrup shear, dev/splice length</td></tr>
+      <tr><td>Section basis</td><td><code>gross</code></td><td><code>effective</code> (S_eff &lt; gross)</td><td><code>transformed / cracked</code></td></tr>
+      <tr><td>Connection method</td><td>nail/screw yield (Z, EYM)</td><td>screw shear/pullout, weld</td><td>rebar development, lap splice</td></tr>
+      <tr><td>Philosophy / governing</td><td>ASD · min(load/CD)</td><td>LRFD · max factored</td><td>LRFD · max factored</td></tr>
+      <tr><td>Stock form → output</td><td>linear → cut list (+ sheet → nest)</td><td>linear → cut list</td><td>cast → formwork + volume</td></tr>
+    </table>
+  </div>
+
+  <!-- GOTCHAS -->
+  <div class="gotchas">
+    <h3>Three decisions to lock now (they leak into "shared" if you don't)</h3>
+    <ul>
+      <li><b>CD is wood-only</b> (viscoelastic creep). The combination <i>set</i> is shared; <i>which combination governs</i> belongs to the strategy — wood picks smallest load/CD, steel/concrete pick largest factored load.</li>
+      <li><b>ASD vs LRFD is a cross-cutting flag</b>, not a per-material constant. <code>SizingArbiter</code> carries <code>designPhilosophy</code>; it decides whether factors hit the load side or the resistance side.</li>
+      <li><b>Cast concrete breaks the cut optimizer.</b> Offcut-pool reuse is a capability of <code>stockForm=linear</code> (wood, CFS studs, rebar). Sheet goods → nesting; cast → formwork+volume. Keep cut optimization off <code>Stock</code> generally.</li>
+    </ul>
+  </div>
+
+  <div id="groups"></div>
+
+  <div class="footbar">
+    <button onclick="document.querySelectorAll('.body').forEach(b=>b.classList.remove('collapsed'))">Expand all</button>
+    <button onclick="document.querySelectorAll('.body').forEach(b=>b.classList.add('collapsed'))">Collapse all</button>
+    <button onclick="exportModel()">Export MODEL json</button>
+  </div>
+  <div class="caveat">
+    <b>Boundary test.</b> A type belongs in Tier 1 only if it is byte-identical when you swap material. If any field reads Fb-or-Fy, ASD-or-LRFD, gross-or-effective, or cut-or-cast, it belongs behind the seam. The leaf surface is the field-map table above — small and enumerable. The single rename that unlocks all of it: <code>LumberStock/LumberSpec → Stock/StockSpec</code> + a <code>material</code> discriminator; <code>Piece, Cut, Transform, BoundingBox, SupplierSku, PriceQuote</code> carry over unchanged.
+  </div>
+</main>
+
+<script>
+const C={entity:'var(--entity)',value:'var(--value)',reference:'var(--reference)',service:'var(--service)',interface:'var(--render)'};
+
+const MODEL={
+  meta:{ pattern:'Strategy', seam:'DesignStandard',
+    tiers:['shared core','the seam','leaf implementations'],
+    implementations:['NDS (wood)','AISI (CFS)','AISC (steel)','ACI (concrete)','TMS (masonry)'],
+    rename:'LumberStock/LumberSpec → Stock/StockSpec + material discriminator',
+    reuseEstimate:'~75% shared' },
+  pipeline:[
+    {k:'drawing'},{k:'geometry'},{k:'framing model'},{k:'placement'},
+    {k:'structural sizing',on:true},{k:'cut optimization'},{k:'supplier'},{k:'drawings export'}
+  ],
+  groups:[
+    {
+      id:'core', name:'Tier 1 · Shared Core', note:'material-blind · one copy · calls through the seam',
+      types:[
+        {name:'Stock', stereo:'entity',
+         one:'Renamed from LumberStock. Material-agnostic raw stock; discriminators route material + output path.',
+         fields:[
+           ['id','string',''],
+           ['material','enum','wood | steel | concrete | masonry  ← discriminator'],
+           ['stockForm','enum','linear | sheet | cast | unit  ← drives output path'],
+           ['spec','StockSpec','']
+         ],
+         notes:['Piece, Cut, Transform, BoundingBox, SupplierSku, PriceQuote carry over unchanged.','stockForm, not material, decides cut vs nest vs formwork.']
+        },
+        {name:'SectionProperties', stereo:'value',
+         one:'Pure geometry. E and design values are injected by the strategy, never owned here.',
+         fields:[['A,S,I','in²/in³/in⁴','b·d, b·d²/6, b·d³/12 · ply'],['basis','enum','gross (core) — effective/cracked computed by strategy']],
+         notes:['Public-domain math — identical across all materials.']
+        },
+        {name:'LoadContext / LoadCombination', stereo:'value',
+         one:'ASCE 7 loads. Material-blind; the set of combinations is shared.',
+         fields:[['w','plf','uniform line load'],['combos','LoadCombination[]','D · D+L · D+0.75(L+S) · D+0.6W'],['governingPicked','by strategy','min(load/CD) vs max factored']],
+         notes:['Gotcha #1: which combo governs is delegated to DesignStandard.']
+        },
+        {name:'BeamStatics', stereo:'service',
+         one:'Statics only. M=wL²/8, V=wL/2, Δ=5wL⁴/384EI — E injected.',
+         fields:[['moment','M = wL²/8',''],['shear','V = wL/2',''],['deflect','Δ = 5wL⁴/384EI ≤ L/360, L/240','']],
+         notes:['Capacity to compare against comes from the strategy\u2019s LimitStateCheck set.']
+        },
+        {name:'SizingArbiter', stereo:'service',
+         one:'Orchestrates; holds no design values. Carries the ASD/LRFD philosophy.',
+         fields:[
+           ['size','(SizingQuery, DesignStandard) → Result',''],
+           ['philosophy','DesignPhilosophy','gotcha #2 — cross-cutting flag'],
+           ['delegates','limitStates + governingCombo → strategy',''],
+           ['escape','enum','engineeredDesign when out of envelope']
+         ],notes:['Identical code for wood, steel, concrete — only the injected strategy differs.']
+        },
+        {name:'LimitStateCheck', stereo:'value',
+         one:'Uniform demand-vs-capacity record. Some instances shared, some strategy-supplied.',
+         fields:[
+           ['id','enum','bending | shear | deflection | buckling | webCrippling | devLength …'],
+           ['demand,capacity','number',''],['ratio','number','≤1.0 ok'],
+           ['origin','enum','core (shared) | strategy (material)']
+         ],
+         notes:['Shared: bending/shear/deflection (capacity injected).','Strategy: CP, local/distortional/LTB, web crippling, rebar dev length.']
+        },
+        {name:'ConnectionGraph', stereo:'entity',
+         one:'Existence of connections is shared; capacity per connection is from the strategy.',
+         fields:[['nodes','Piece[]',''],['edges','Connection[]','typed by joint + method'],['capacity','via DesignStandard','Z / screw / weld / rebar']],
+         notes:['First-class graph regardless of material.']
+        },
+        {name:'Provenance / CodeProvision / PrescriptiveLookup', stereo:'reference',
+         one:'Pointers, tags, and licensed-table lookup — material-blind containers.',
+         fields:[['kind','open | derived | verifyEdition',''],['lookup','PrescriptiveTable','works for any material\u2019s tables']],
+         notes:['A steel or concrete prescriptive table reuses the same lookup shape.']
+        }
+      ]
+    },
+    {
+      id:'seam', name:'Tier 2 · The Seam', note:'the only place material knowledge enters',
+      types:[
+        {name:'DesignStandard', stereo:'interface', seam:true,
+         one:'The one interface. Four supplies + governing combination + section basis. Everything in Tier 1 calls through it.',
+         fields:[
+           ['designValues','(StockSpec) → DesignValues','① strengths + stiffness'],
+           ['modificationFactors','(condition) → Factor[]','② CD/φ/Q/creep …'],
+           ['limitStates','() → LimitStateCheck[]','③ material failure modes'],
+           ['connectionCapacity','(joint) → capacity','④ Z / screw / weld / rebar'],
+           ['governingCombination','(LoadCombination[]) → chosen','min(load/CD) | max factored'],
+           ['sectionBasis','enum','gross | effective | transformed'],
+           ['philosophy','DesignPhilosophy',''],
+           ['implementations','enum','NDS | AISI | AISC | ACI | TMS']
+         ],
+         rules:['boundary rule: if a field reads Fb-or-Fy / ASD-or-LRFD / gross-or-effective / cut-or-cast, it lives HERE, not in Tier 1.']
+        },
+        {name:'DesignPhilosophy', stereo:'value',
+         one:'Cross-cutting ASD/LRFD flag — not a per-material constant.',
+         fields:[['mode','enum','ASD | LRFD'],['factorSide','enum','resistance (LRFD φ) | load (ASD combos)'],['carriedBy','SizingArbiter','']],
+         notes:['Gotcha #2: wood runs ASD; steel/concrete usually LRFD. The arbiter holds it, the strategy declares its default.']
+        }
+      ]
+    },
+    {
+      id:'leaf', name:'Tier 3 · Leaf Implementations', note:'per material · plugged into the seam',
+      types:[
+        {name:'NDS_Wood', stereo:'reference', badge:'wood', badgeClass:'wood',
+         one:'The reference implementation — fully populated.',
+         fields:[
+           ['designValues','Fb,Ft,Fv,Fc∥,Fc⊥,E,Emin,G',''],
+           ['specKeys','species, grade, sizeClass',''],
+           ['factors','CD, CM, CF, Cr, CP, Cfu, Ci',''],
+           ['limitStates(+)','CP column buckling, Fc⊥ bearing',''],
+           ['sectionBasis','gross',''],
+           ['connection','nail/screw yield Z (EYM)',''],
+           ['philosophy / governing','ASD · min(load/CD)',''],
+           ['stockForm','linear (+ sheet for WSP)','']
+         ],
+         notes:['DF-L No.2 seed: Fb 900 · Fv 180 · E 1.6e6 · Emin 580k · G 0.50.','Already built — this is what the sizing-engine layer implements.']
+        },
+        {name:'AISI_CFS', stereo:'reference', badge:'stub', badgeClass:'stub',
+         one:'Cold-formed steel — the cheapest next material. Same wall topology as wood.',
+         fields:[
+           ['designValues','Fy, Fu, E=29,000 ksi (const)',''],
+           ['specKeys','mil/thickness, yield 33/50, profile',''],
+           ['factors','φ/Ω, effective-width Q, hole reduction',''],
+           ['limitStates(+)','local + distortional + LTB buckling, web crippling',''],
+           ['sectionBasis','effective (S_eff < gross)',''],
+           ['connection','screw shear/pullout, weld',''],
+           ['philosophy / governing','LRFD (or ASD) · max factored',''],
+           ['stockForm','linear → cut list','']
+         ],
+         notes:['Track/stud/header, king/jack, braced walls all port with terminology swaps.','Hybrid (wood walls + steel beams + concrete footing) is the real end state — the argument for the seam.']
+        },
+        {name:'ACI_Concrete', stereo:'reference', badge:'stub', badgeClass:'stub',
+         one:'Concrete — included to prove the seam holds where assumptions break.',
+         fields:[
+           ['designValues','f′c, Ec, rebar fy',''],
+           ['specKeys','bar size, cover, mix',''],
+           ['factors','φ (0.9 flex / 0.75 shear), creep, ρ min/max',''],
+           ['limitStates(+)','cracked-section flexure, stirrup shear, dev/splice length',''],
+           ['sectionBasis','transformed / cracked',''],
+           ['connection','rebar development, lap splice',''],
+           ['philosophy / governing','LRFD strength design · max factored',''],
+           ['stockForm','cast → formwork + volume, NOT a cut list','']
+         ],
+         rules:['gotcha #3: routes to a formwork/volume output layer, bypassing the linear cut optimizer + offcut pool.']
+        }
+      ]
+    }
+  ]
+};
+
+// render
+const pipe=document.getElementById('pipe');
+MODEL.pipeline.forEach((s,i)=>{ if(i) pipe.insertAdjacentHTML('beforeend','<span class="parr">→</span>');
+  pipe.insertAdjacentHTML('beforeend',`<span class="pstep ${s.on?'on':''}">${s.k}</span>`); });
+const legend=document.getElementById('legend');
+[['entity','Entity'],['value','Value Object'],['reference','Reference / Flyweight'],['service','Service'],['interface','Interface / Seam']].forEach(([k,l])=>{
+  legend.insertAdjacentHTML('beforeend',`<span><i class="dot" style="background:${C[k]}"></i>${l}</span>`); });
+const groups=document.getElementById('groups');
+MODEL.groups.forEach(g=>{
+  const sec=document.createElement('section'); sec.className='group';
+  sec.innerHTML=`<div class="ghead"><h2>${g.name}</h2><span class="gnote">${g.note||''}</span></div>`;
+  const grid=document.createElement('div'); grid.className='grid';
+  g.types.forEach(t=>grid.appendChild(card(t)));
+  sec.appendChild(grid); groups.appendChild(sec);
+});
+function card(t){
+  const col=C[t.stereo]||'var(--ink3)';
+  const el=document.createElement('div'); el.className='type'+(t.seam?' seam':''); el.style.borderLeftColor=col;
+  const badge=t.badge?`<span class="badge ${t.badgeClass||''}">${t.badge==='wood'?'populated':'stub'}</span>`:'';
+  let fields=(t.fields&&t.fields.length)?'<table class="fields">'+t.fields.map(f=>`<tr><td class="fn">${f[0]}</td><td class="ft">${f[1]}</td><td class="fnote">${f[2]||''}</td></tr>`).join('')+'</table>':'';
+  let rules=(t.rules&&t.rules.length)?t.rules.map(r=>`<div class="rule">${r}</div>`).join(''):'';
+  let notes=(t.notes&&t.notes.length)?`<ul class="notes">${t.notes.map(n=>`<li>${n}</li>`).join('')}</ul>`:'';
+  el.innerHTML=`
+    <div class="top" onclick="this.parentNode.querySelector('.body').classList.toggle('collapsed')">
+      <span class="tname">${t.name} ${badge}</span>
+      <span class="stereo" style="color:${col}">${t.stereo}</span>
+    </div>
+    <div class="one">${t.one}</div>
+    <div class="toggle">
+      <button class="active" onclick="event.stopPropagation();view(this,'card')">card</button>
+      <button onclick="event.stopPropagation();view(this,'json')">json</button>
+    </div>
+    <div class="body">${fields}${rules}${notes}</div>
+    <pre class="json">${escapeHtml(JSON.stringify(t,null,2))}</pre>`;
+  el.querySelector('.stereo').style.background='rgba(255,255,255,.05)';
+  return el;
+}
+function view(btn,mode){
+  const t=btn.closest('.type');
+  t.querySelectorAll('.toggle button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  t.querySelector('.body').style.display = mode==='json'?'none':'block';
+  t.querySelector('.json').classList.toggle('show', mode==='json');
+}
+function escapeHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function exportModel(){
+  const blob=new Blob([JSON.stringify(MODEL,null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='design-standard-schema.model.json'; a.click();
+}
+</script>
+</body>
+</html>

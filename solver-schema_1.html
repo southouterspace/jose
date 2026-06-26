@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Framing Solver Schema — Geometry → Cut List</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0E1116;
+    --panel:#161B22;
+    --panel-2:#1B222B;
+    --line:#272F3A;
+    --line-soft:#1F262F;
+    --ink:#C9D1D9;
+    --ink-dim:#8B97A6;
+    --ink-faint:#5C6675;
+    /* stereotype semantics — paired with the lumber schema */
+    --entity:#E2682C;      /* load-bearing entity */
+    --value:#5B9BD5;       /* immutable value object */
+    --service:#C792EA;     /* process / verb */
+    --reference:#6FBF73;   /* shared flyweight */
+    --entity-bg:rgba(226,104,44,.10);
+    --value-bg:rgba(91,155,213,.10);
+    --service-bg:rgba(199,146,234,.10);
+    --reference-bg:rgba(111,191,115,.10);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto} *{transition:none!important;animation:none!important}}
+  body{
+    margin:0;background:var(--bg);color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif;font-size:15px;line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:inherit}
+  .wrap{max-width:1240px;margin:0 auto;padding:0 24px}
+
+  /* ---------- header ---------- */
+  header{border-bottom:1px solid var(--line);background:linear-gradient(180deg,#11151B,var(--bg));}
+  .head-top{padding:30px 0 8px;display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
+  h1{
+    font-family:'Saira Condensed',sans-serif;font-weight:700;
+    font-size:38px;letter-spacing:.5px;margin:0;line-height:1;color:#F0F4F8;
+  }
+  h1 .x{color:var(--entity)}
+  .sub{color:var(--ink-dim);font-size:14px;margin-top:8px;max-width:620px}
+  .meta-pill{
+    font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--ink-dim);
+    border:1px solid var(--line);border-radius:6px;padding:7px 11px;white-space:nowrap;
+    background:var(--panel);
+  }
+
+  /* ---------- pipeline signature ---------- */
+  .pipe{display:flex;gap:0;align-items:stretch;padding:20px 0 26px;overflow-x:auto}
+  .stage{
+    flex:1 0 auto;min-width:118px;position:relative;padding:12px 16px 12px 18px;
+    border:1px solid var(--line);background:var(--panel);
+    cursor:pointer;transition:background .15s,border-color .15s;
+  }
+  .stage:not(:last-child){border-right:none}
+  .stage:first-child{border-radius:8px 0 0 8px}
+  .stage:last-child{border-radius:0 8px 8px 0}
+  .stage:after{
+    content:"";position:absolute;right:-9px;top:50%;transform:translateY(-50%) rotate(45deg);
+    width:14px;height:14px;background:var(--panel);border-top:1px solid var(--line);border-right:1px solid var(--line);z-index:2;
+  }
+  .stage:last-child:after{display:none}
+  .stage:hover{background:var(--panel-2)}
+  .stage.on{border-color:var(--ink-dim)}
+  .stage .num{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-faint);letter-spacing:1px}
+  .stage .nm{font-family:'Saira Condensed',sans-serif;font-weight:600;font-size:17px;color:#E6ECF2;letter-spacing:.3px;margin-top:2px;line-height:1.1}
+  .stage .ct{font-size:11px;color:var(--ink-dim);margin-top:3px}
+  .stage .bar{position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:2px 0 0 2px}
+
+  /* ---------- controls ---------- */
+  .controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:18px 0;border-bottom:1px solid var(--line-soft)}
+  .legend{display:flex;gap:7px;flex-wrap:wrap}
+  .chip{
+    font-family:'IBM Plex Mono',monospace;font-size:11.5px;letter-spacing:.3px;
+    padding:5px 10px;border-radius:20px;border:1px solid var(--line);
+    color:var(--ink-dim);cursor:pointer;background:transparent;user-select:none;
+    display:inline-flex;align-items:center;gap:6px;transition:.13s;
+  }
+  .chip .dot{width:8px;height:8px;border-radius:50%}
+  .chip.off{opacity:.32}
+  .chip.entity{border-color:rgba(226,104,44,.4)} .chip.entity .dot{background:var(--entity)}
+  .chip.value{border-color:rgba(91,155,213,.4)} .chip.value .dot{background:var(--value)}
+  .chip.service{border-color:rgba(199,146,234,.4)} .chip.service .dot{background:var(--service)}
+  .chip.reference{border-color:rgba(111,191,115,.4)} .chip.reference .dot{background:var(--reference)}
+  .spacer{flex:1}
+  .tabs{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+  .tab{
+    font-family:'IBM Plex Mono',monospace;font-size:12px;padding:7px 14px;cursor:pointer;
+    color:var(--ink-dim);background:var(--panel);border:none;transition:.13s;
+  }
+  .tab+.tab{border-left:1px solid var(--line)}
+  .tab.on{background:var(--panel-2);color:#E6ECF2}
+  .btn{
+    font-family:'IBM Plex Mono',monospace;font-size:12px;padding:7px 13px;cursor:pointer;
+    color:var(--ink-dim);background:var(--panel);border:1px solid var(--line);border-radius:7px;transition:.13s;
+  }
+  .btn:hover{color:#E6ECF2;border-color:var(--ink-faint)}
+  .btn.copied{color:var(--reference);border-color:rgba(111,191,115,.5)}
+
+  /* ---------- layer sections ---------- */
+  .layer{padding:30px 0 6px}
+  .layer-head{display:flex;align-items:baseline;gap:14px;margin-bottom:4px}
+  .layer-num{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-faint)}
+  .layer-title{font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:24px;letter-spacing:.4px;color:#EAF0F6}
+  .layer-desc{color:var(--ink-dim);font-size:13.5px;margin:2px 0 20px;max-width:760px}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:16px}
+
+  /* ---------- card ---------- */
+  .card{
+    border:1px solid var(--line);border-radius:11px;background:var(--panel);
+    position:relative;overflow:hidden;display:flex;flex-direction:column;
+  }
+  .card.hidden{display:none}
+  .card-bar{height:3px;width:100%}
+  .card-in{padding:16px 17px 15px;display:flex;flex-direction:column;height:100%}
+  .card-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:3px}
+  .card-name{font-family:'Saira Condensed',sans-serif;font-weight:600;font-size:21px;letter-spacing:.3px;color:#EEF3F8}
+  .stereo{
+    font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.6px;text-transform:uppercase;
+    padding:3px 8px;border-radius:5px;white-space:nowrap;
+  }
+  .stereo.entity{color:var(--entity);background:var(--entity-bg)}
+  .stereo.value{color:var(--value);background:var(--value-bg)}
+  .stereo.service{color:var(--service);background:var(--service-bg)}
+  .stereo.reference{color:var(--reference);background:var(--reference-bg)}
+  .card-purpose{color:var(--ink-dim);font-size:13px;line-height:1.45;margin:5px 0 12px}
+
+  .fields{display:flex;flex-direction:column;gap:0;margin-top:auto}
+  .field{
+    display:flex;align-items:baseline;gap:10px;padding:6px 0;border-top:1px solid var(--line-soft);
+    font-family:'IBM Plex Mono',monospace;font-size:12px;
+  }
+  .field .fn{color:#BAC4CF;min-width:108px;flex-shrink:0}
+  .field .ft{color:var(--ink-faint);font-size:11px}
+  .field .fn .opt{color:var(--ink-faint)}
+
+  .note{
+    margin-top:12px;padding:9px 11px;border-radius:7px;background:var(--panel-2);
+    border:1px solid var(--line-soft);font-size:12px;color:var(--ink-dim);line-height:1.45;
+  }
+  .note b{color:#CDD6DF;font-weight:600}
+
+  .card-foot{display:flex;gap:8px;margin-top:13px}
+  .mini{
+    font-family:'IBM Plex Mono',monospace;font-size:10.5px;padding:4px 9px;border-radius:6px;
+    border:1px solid var(--line);background:transparent;color:var(--ink-faint);cursor:pointer;transition:.13s;
+  }
+  .mini:hover{color:var(--ink);border-color:var(--ink-faint)}
+  .refs{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-faint);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .refs .r{padding:3px 7px;border:1px solid var(--line-soft);border-radius:20px}
+
+  .raw{display:none;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#A9B7C4;
+    white-space:pre;overflow:auto;background:#0B0E13;border-radius:8px;padding:13px;margin-top:4px;line-height:1.5}
+  .card.show-raw .card-body{display:none}
+  .card.show-raw .raw{display:block}
+
+  /* ---------- json view ---------- */
+  #json{display:none;padding:24px 0 60px}
+  #json.on{display:block}
+  #jsonOut{font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#A9B7C4;white-space:pre;
+    overflow:auto;background:#0B0E13;border:1px solid var(--line);border-radius:10px;padding:20px;line-height:1.55}
+  #browse.hidden{display:none}
+
+  footer{border-top:1px solid var(--line);margin-top:40px;padding:20px 0 50px;
+    font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--ink-faint)}
+
+  ::-webkit-scrollbar{height:9px;width:9px}
+  ::-webkit-scrollbar-thumb{background:#2A323D;border-radius:5px}
+  ::-webkit-scrollbar-track{background:transparent}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="head-top">
+      <div>
+        <h1>FRAMING <span class="x">SOLVER</span> SCHEMA</h1>
+        <div class="sub">The derivation engine: from push/pull geometry to a fully traced cut list. Each member carries its install context so real structural reasoning — not table guessing — can run. Stereotype = color.</div>
+      </div>
+      <div class="meta-pill" id="metaPill"></div>
+    </div>
+
+    <!-- pipeline signature: the actual data flow, left to right -->
+    <div class="pipe" id="pipe"></div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="controls">
+    <div class="legend" id="legend"></div>
+    <div class="spacer"></div>
+    <button class="btn" id="rawAll" onclick="toggleAllRaw()">Show all raw</button>
+    <button class="btn" id="copyAll" onclick="copyAll()">Copy full schema</button>
+    <div class="tabs">
+      <button class="tab on" data-v="browse" onclick="setView('browse')">Browse</button>
+      <button class="tab" data-v="json" onclick="setView('json')">Schema JSON</button>
+    </div>
+  </div>
+
+  <div id="browse"></div>
+
+  <div id="json">
+    <pre id="jsonOut"></pre>
+  </div>
+</div>
+
+<footer><div class="wrap" id="foot"></div></footer>
+
+<script>
+/* =========================================================================
+   ONE SOURCE OF TRUTH — human cards + machine contract both render from this.
+   This schema captures the SOLVER pipeline. It references (does not redefine)
+   the materials schema: LumberSpec, MechanicalProperties, SupplierSku, Piece
+   live there. Cross-refs are noted on the cards that need them.
+   ========================================================================= */
+const MODEL = {
+  meta:{
+    schema:"framing-solver",
+    version:"0.1.0",
+    units:"integer ticks @ 1/32in (avoid float drift on imperial fractions)",
+    pairsWith:"materials-schema@0.x (LumberSpec, MechanicalProperties, SupplierSku, Piece)",
+    scope:"v0.1 — 2x4 stick framing, single-story walls + openings. Joists/rafters/sheathing slot in later.",
+    derivation:"one-way: geometry edit -> re-solve framing -> re-derive cut list. Framing is never hand-edited."
+  },
+  layers:[
+    {
+      id:"geometry",
+      title:"Geometry Kernel",
+      desc:"The dumb push/pull solid. Sketch a profile on a plan, extrude on Z, then push/pull any face. No building meaning yet — just faces, edges, volume.",
+      types:[
+        {
+          name:"Volume", stereo:"entity",
+          purpose:"An extruded solid produced from a 2D profile pushed along an axis. The raw geometry a user manipulates.",
+          fields:[
+            ["id","uuid"],
+            ["profile","Path2D — closed plan sketch"],
+            ["extrudeAxis","vec3 (usually +Z)"],
+            ["height","ticks"],
+            ["faces","Face[]"],
+            ["edits","PushPullOp[] — history"]
+          ],
+          note:"Geometry only. It does <b>not</b> know it is a wall. Promotion to a building object is a separate, explicit step."
+        },
+        {
+          name:"Face", stereo:"value",
+          purpose:"A bounded planar region of a volume. Push/pull acts on a face. Orientation lets the system infer likely role.",
+          fields:[
+            ["normal","vec3"],
+            ["plane","Plane"],
+            ["boundary","Path2D"],
+            ["area","ticks²"],
+            ["inferredRole","enum? wall|floor|ceiling|roof — from normal+height"]
+          ],
+          note:"Inference is a <b>hint</b>, never a commitment. Vertical normal → likely wall; low horizontal → floor. User can override."
+        },
+        {
+          name:"PushPullOp", stereo:"service",
+          purpose:"Extrude or inset a face along its normal, creating or reshaping volume. The core modeling verb.",
+          fields:[
+            ["targetFace","Face ref"],
+            ["distance","ticks (signed)"],
+            ["mode","extrude|inset"],
+            ["result","Volume delta"]
+          ],
+          note:"Editing geometry here invalidates downstream framing → triggers a re-solve. Derivation is one-way."
+        }
+      ]
+    },
+    {
+      id:"building",
+      title:"Building Model",
+      desc:"Semantic promotion. A vertical face becomes a Wall; a cut in it becomes an Opening; where walls meet becomes a Junction with a single owner. This is the hard layer — meaning, not shape.",
+      types:[
+        {
+          name:"Wall", stereo:"entity",
+          purpose:"A bearing or partition wall promoted from geometry. Carries the parameters the framer needs.",
+          fields:[
+            ["id","uuid"],
+            ["sourceFace","Face ref"],
+            ["baseline","Segment (plan)"],
+            ["length","ticks"],
+            ["height","ticks"],
+            ["thickness","ticks"],
+            ["role","exterior|interior|bearing|partition"],
+            ["spacing","16|24 (in OC)"],
+            ["openings","Opening[]"]
+          ],
+          note:"Stud count is <b>derived</b>, never stored. Edit the wall → framer re-runs. Stored counts go stale and lie."
+        },
+        {
+          name:"Opening", stereo:"value",
+          purpose:"A door/window void in a wall. Drives king/jack/header/cripple/sill framing around it.",
+          fields:[
+            ["type","door|window"],
+            ["width","ticks (rough opening)"],
+            ["height","ticks"],
+            ["sillHeight","ticks (0 for door)"],
+            ["position","ticks from wall start"]
+          ],
+          note:"Rough-opening width, not door width. Header bearing length is added by the framer per side."
+        },
+        {
+          name:"Junction", stereo:"value",
+          purpose:"Where two or more walls meet. Names the condition AND the owner so a shared post is counted once.",
+          fields:[
+            ["type","corner|tee|cross"],
+            ["walls","Wall ref[]"],
+            ["ownerWall","Wall ref — claims the post"],
+            ["method","3-stud|2-stud+clip|California"]
+          ],
+          note:"<b>The #1 source of bad counts.</b> Both walls 'see' the corner; only the owner frames it. Junction rule resolves the dispute."
+        },
+        {
+          name:"FramingSolver", stereo:"service",
+          purpose:"Wall + openings + junctions → an ordered set of MemberPlacements (plates, studs, opening framing, blocking) at the wall's OC spacing.",
+          fields:[
+            ["in","Wall, Junction[]"],
+            ["rules","OC layout, plate stack, opening framing, fireblock"],
+            ["out","MemberPlacement[]"],
+            ["stability","minimize layout churn on small edits"]
+          ],
+          note:"Layout must be <b>stable</b> — a 2in nudge shouldn't reshuffle every stud, or the user loses trust. Anchor the grid, don't redraw it."
+        }
+      ]
+    },
+    {
+      id:"placement",
+      title:"Placement Context",
+      desc:"The new layer. A member's strength depends on HOW it is installed — which face takes load, which axis is braced, how its ends are fixed. Intrinsic spec stays shared; this context is per-instance.",
+      types:[
+        {
+          name:"MemberPlacement", stereo:"entity",
+          purpose:"One framing member, in place. References a shared spec; owns its install context. The unit the capacity check and the cut list both read.",
+          fields:[
+            ["id","uuid"],
+            ["specRef","→ LumberSpec (materials schema)"],
+            ["role","stud|king|jack|header|cripple|sill|plate|block"],
+            ["transform","Transform (position + rotation)"],
+            ["length","ticks (cut length, derived)"],
+            ["orientation","Orientation"],
+            ["bracing","BracingRef[]"],
+            ["ends","EndCondition[2]"],
+            ["connections","→ ConnectionPoint[] (materials schema)"]
+          ],
+          note:"Same 2x4 spec, many placements. Capacity = shared base values × factors derived from <b>this</b> placement's context."
+        },
+        {
+          name:"Orientation", stereo:"value",
+          purpose:"The member's local axis frame. Decides strong vs weak axis — a ~5–6× swing in bending capacity for the same stick.",
+          fields:[
+            ["loadFace","which face takes load (1.5in vs 3.5in)"],
+            ["strongAxis","vec3"],
+            ["weakAxis","vec3"]
+          ],
+          note:"Load on the 3.5in edge = strong axis (joist). Load flat on 1.5in = weak axis. Get this wrong and the section modulus inverts."
+        },
+        {
+          name:"BracingRef", stereo:"value",
+          purpose:"What braces a given axis, and how often. Sets the effective length for column buckling (Cp) and beam stability (CL).",
+          fields:[
+            ["axis","strong|weak"],
+            ["bracedBy","sheathing|blocking|none"],
+            ["spacing","ticks (unbraced length)"]
+          ],
+          note:"Sheathing typically braces the weak axis of a stud → buckling governs about the other axis. No brace = full-height unbraced."
+        },
+        {
+          name:"EndCondition", stereo:"value",
+          purpose:"Fixity at one end of the member. Feeds effective-length factor and load transfer.",
+          fields:[
+            ["end","start|finish"],
+            ["fixity","pinned|fixed|bearing|free"],
+            ["connectionRef","→ ConnectionPoint (materials schema)"]
+          ],
+          note:"Bearing on a plate = Fc⊥ crush check on the plate, axial on the stud. End condition picks the governing mode."
+        }
+      ]
+    },
+    {
+      id:"structural",
+      title:"Structural Check",
+      desc:"Real engineering. Base NDS design values (intrinsic, shared) get multiplied by an adjustment-factor stack derived from placement context, then compared to load demand per the member's governing failure mode.",
+      types:[
+        {
+          name:"NDSDesignValues", stereo:"reference",
+          purpose:"Base allowable design values for a species + grade + size class. Shared flyweight — looked up, never copied per member.",
+          fields:[
+            ["key","species + grade + sizeClass"],
+            ["Fb","bending, psi"],
+            ["Fc_perp","perp compression (bearing/crush)"],
+            ["Fc_par","parallel compression (column)"],
+            ["Ft","tension"],
+            ["Fv","shear"],
+            ["E","modulus"],
+            ["Emin","stability modulus"]
+          ],
+          note:"Source: NDS Supplement design-value tables. Lives near <b>MechanicalProperties</b> in the materials schema; feed it real numbers."
+        },
+        {
+          name:"AdjustmentFactors", stereo:"value",
+          purpose:"The NDS factor stack applied to base values. Which factors apply depends on the member's role and context.",
+          fields:[
+            ["CD","load duration"],
+            ["CM","wet service"],
+            ["Ct","temperature"],
+            ["CF / CFu","size"],
+            ["Ci","incising"],
+            ["Cr","repetitive member (studs 16in OC)"],
+            ["Cp","column stability (uses bracing)"],
+            ["CL","beam stability (uses bracing)"]
+          ],
+          note:"Capacity = base × stack. A stud-as-column uses Cp; a header-as-beam uses CL + Cr off, etc. <b>Role selects the stack.</b>"
+        },
+        {
+          name:"LoadCase", stereo:"value",
+          purpose:"A demand on a member from a tributary area. The other half of pass/fail — strength alone proves nothing.",
+          fields:[
+            ["type","dead|live|snow|wind|seismic"],
+            ["magnitude","psf or lb"],
+            ["tributaryArea","ticks²"],
+            ["direction","axial|lateral|gravity"]
+          ],
+          note:"Tributary area → load per member. Combos come later (ASCE 7). v0.1 can start with gravity dead+live only."
+        },
+        {
+          name:"CapacityCheck", stereo:"service",
+          purpose:"Reads spec + placement + factors + loads → adjusted capacity vs demand for the governing mode → pass/fail with margin.",
+          fields:[
+            ["in","MemberPlacement, NDSDesignValues, LoadCase[]"],
+            ["mode","column|bearing|bending|shear|deflection"],
+            ["adjusted","base × AdjustmentFactors"],
+            ["result","pass|fail + utilization %"]
+          ],
+          note:"Two products in one: <b>prescriptive</b> (IRC table lookup, fast, common case) and <b>engineered</b> (this NDS path) when you exceed the tables."
+        }
+      ]
+    },
+    {
+      id:"cut",
+      title:"Cut & Optimization",
+      desc:"The offcut tracer. All required pieces become demand; the solver assigns them to real buyable stock, kerf-aware, reusing remainders by smart-match. Waste = only what fits no remaining demand.",
+      types:[
+        {
+          name:"Demand", stereo:"value",
+          purpose:"One required cut: a length the framing needs, traced back to the member that needs it.",
+          fields:[
+            ["length","ticks (final cut length)"],
+            ["qty","int"],
+            ["role","stud|plate|header|cripple|block|..."],
+            ["specRef","→ LumberSpec"],
+            ["sourcePlacement","MemberPlacement ref"]
+          ],
+          note:"Build the <b>full</b> demand list before cutting. Greedy as-you-go wastes more — pack with the whole picture."
+        },
+        {
+          name:"StockOption", stereo:"value",
+          purpose:"A buyable length, drawn only from the supplier catalog. The constraint set the solver may choose from.",
+          fields:[
+            ["skuRef","→ SupplierSku"],
+            ["length","ticks (92.625, 96, 120, 144...)"],
+            ["price","cents"],
+            ["packSize","int (bundle qty)"]
+          ],
+          note:"No imaginary stock. If the yard doesn't carry 16ft, the solver can't use 16ft. Stock is data, not assumption."
+        },
+        {
+          name:"OffcutPool", stereo:"entity",
+          purpose:"The running set of reusable remainders. Checked before opening new stock so leftovers become supply.",
+          fields:[
+            ["pieces","{length, parentRef}[]"],
+            ["minReusable","ticks (≈14.5in = 16OC clear bay)"],
+            ["matchMode","smart — fit any offcut to any remaining demand"]
+          ],
+          note:"Reuse threshold = clear bay span (14.5in @ 16 OC). Below that, only usable if a shorter demand (e.g. cripple) still fits. Else waste."
+        },
+        {
+          name:"CuttingStockSolver", stereo:"service",
+          purpose:"Demand[] + StockOption[] → assignment minimizing waste (then cost). Chooses stock mix AND cut pattern together.",
+          fields:[
+            ["in","Demand[], StockOption[], kerf"],
+            ["method","ILP optimal (small N) / first-fit-decreasing + pool"],
+            ["kerf","ticks (~1/8in) — counted per cut"],
+            ["objective","min waste, then min cost (user dial)"],
+            ["out","CutAssignment[]"]
+          ],
+          note:"Two coupled problems: <b>which sticks to buy</b> and <b>how to cut them</b>. Solving them together is what minimizes waste."
+        },
+        {
+          name:"CutAssignment", stereo:"value",
+          purpose:"One stock stick's plan: the ordered cuts taken from it, kerf between, and the fate of the final remainder.",
+          fields:[
+            ["stockRef","StockOption"],
+            ["cuts","{demandRef, length}[] (order matters)"],
+            ["kerfTotal","ticks"],
+            ["remainder","ticks"],
+            ["remainderFate","pooled|waste"]
+          ],
+          note:"The provenance row: this stick → these cuts → this leftover → reused or scrapped. Sum of fates = exact buy count + exact waste."
+        },
+        {
+          name:"Piece", stereo:"entity",
+          purpose:"A cut result with provenance back to its parent stock. Defined in the materials schema; referenced here as solver output.",
+          fields:[
+            ["id","uuid"],
+            ["length","ticks"],
+            ["parentStock","StockOption ref"],
+            ["fulfills","Demand ref"],
+            ["isOffcutReuse","bool"]
+          ],
+          note:"Cross-ref → <b>materials-schema Piece</b>. The cut tree (Stock → CutOp → Piece → reuse|scrap) is the same provenance chain."
+        }
+      ]
+    },
+    {
+      id:"supplier",
+      title:"Supplier Constraint",
+      desc:"The real-world feed. Buyable products from nearby yards define what the solver may choose. Future: live inventory APIs. The schema treats it purely as an input constraint set.",
+      types:[
+        {
+          name:"SupplierSku", stereo:"reference",
+          purpose:"A real, buyable product from a specific supplier. Shared flyweight; the solver's entire option space comes from these.",
+          fields:[
+            ["id","sku"],
+            ["species","SPF|DF|SYP..."],
+            ["grade","Stud|No.2|..."],
+            ["section","2x4"],
+            ["length","ticks"],
+            ["price","cents"],
+            ["packSize","int"],
+            ["availability","int|null"],
+            ["supplierId","ref"],
+            ["asOf","timestamp"]
+          ],
+          note:"Defined in the materials schema; pulled per nearby store. <b>asOf</b> matters — price/stock go stale fast. Cache + timestamp."
+        }
+      ]
+    }
+  ]
+};
+
+/* ---------- render ---------- */
+const STEREO_COLOR={entity:'var(--entity)',value:'var(--value)',service:'var(--service)',reference:'var(--reference)'};
+const active={entity:true,value:true,service:true,reference:true};
+
+function pipeChip(l,i){
+  const ct=l.types.length;
+  return `<div class="stage" data-layer="${l.id}" onclick="jumpTo('${l.id}')">
+    <div class="num">0${i+1}</div>
+    <div class="nm">${l.title}</div>
+    <div class="ct">${ct} type${ct>1?'s':''}</div>
+  </div>`;
+}
+document.getElementById('pipe').innerHTML=MODEL.layers.map(pipeChip).join('');
+
+const STEREOS=[['entity','Entity'],['value','Value Object'],['service','Service'],['reference','Reference']];
+document.getElementById('legend').innerHTML=STEREOS.map(([k,lbl])=>
+  `<button class="chip ${k}" data-st="${k}" onclick="toggleStereo('${k}')"><span class="dot"></span>${lbl}</button>`).join('');
+
+function fieldRow(f){
+  const [n,t]=f;
+  const opt=n.endsWith('?');
+  const nm=opt?n.slice(0,-1)+'<span class="opt">?</span>':n;
+  return `<div class="field"><span class="fn">${nm}</span><span class="ft">${t}</span></div>`;
+}
+
+function cardHTML(t){
+  const refs=t.fields.filter(f=>/→/.test(f[1])).length;
+  return `<div class="card" data-st="${t.stereo}">
+    <div class="card-bar" style="background:${STEREO_COLOR[t.stereo]}"></div>
+    <div class="card-in">
+      <div class="card-body">
+        <div class="card-top">
+          <span class="card-name">${t.name}</span>
+          <span class="stereo ${t.stereo}">${t.stereo}</span>
+        </div>
+        <div class="card-purpose">${t.purpose}</div>
+        <div class="fields">${t.fields.map(fieldRow).join('')}</div>
+        ${t.note?`<div class="note">${t.note}</div>`:''}
+      </div>
+      <pre class="raw">${escapeHtml(JSON.stringify(t,null,2))}</pre>
+      <div class="card-foot">
+        <button class="mini" onclick="flipRaw(this)">JSON</button>
+        ${refs?`<span class="refs"><span class="r">${refs} cross-ref${refs>1?'s':''}</span></span>`:''}
+      </div>
+    </div>
+  </div>`;
+}
+
+function layerHTML(l,i){
+  return `<section class="layer" id="layer-${l.id}">
+    <div class="layer-head">
+      <span class="layer-num">0${i+1}</span>
+      <span class="layer-title">${l.title}</span>
+    </div>
+    <div class="layer-desc">${l.desc}</div>
+    <div class="grid">${l.types.map(cardHTML).join('')}</div>
+  </section>`;
+}
+
+function buildBrowser(){
+  document.getElementById('browse').innerHTML=MODEL.layers.map(layerHTML).join('');
+  applyFilter();
+}
+
+function escapeHtml(s){return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+
+function toggleStereo(k){
+  active[k]=!active[k];
+  document.querySelector(`.chip[data-st="${k}"]`).classList.toggle('off',!active[k]);
+  applyFilter();
+}
+function applyFilter(){
+  document.querySelectorAll('.card').forEach(c=>{
+    c.classList.toggle('hidden',!active[c.dataset.st]);
+  });
+}
+function flipRaw(btn){ btn.closest('.card').classList.toggle('show-raw'); }
+function jumpTo(id){
+  document.querySelectorAll('.stage').forEach(s=>s.classList.toggle('on',s.dataset.layer===id));
+  const el=document.getElementById('layer-'+id);
+  if(el) el.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function setView(v){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.v===v));
+  const json=document.getElementById('json'),browse=document.getElementById('browse');
+  if(v==='json'){browse.classList.add('hidden');json.classList.add('on');
+    document.getElementById('jsonOut').textContent=JSON.stringify(MODEL,null,2);}
+  else{browse.classList.remove('hidden');json.classList.remove('on');}
+}
+function copyAll(){
+  navigator.clipboard.writeText(JSON.stringify(MODEL,null,2));
+  const b=document.getElementById('copyAll');b.classList.add('copied');b.textContent='Copied ✓';
+  setTimeout(()=>{b.classList.remove('copied');b.textContent='Copy full schema';},1300);
+}
+let allRaw=false;
+function toggleAllRaw(){
+  allRaw=!allRaw;
+  document.querySelectorAll('.card').forEach(c=>c.classList.toggle('show-raw',allRaw));
+  document.getElementById('rawAll').textContent=allRaw?'Hide all raw':'Show all raw';
+}
+
+buildBrowser();
+
+const tc=MODEL.layers.reduce((n,l)=>n+l.types.length,0);
+document.getElementById('metaPill').textContent=`${MODEL.meta.schema}@${MODEL.meta.version} · ${MODEL.layers.length} layers · ${tc} types`;
+document.getElementById('foot').innerHTML=
+  `${MODEL.layers.length} layers · ${tc} types · schema ${MODEL.meta.schema}@${MODEL.meta.version} · units: ${MODEL.meta.units} · pairs with ${MODEL.meta.pairsWith}`;
+</script>
+</body>
+</html>
