@@ -17,7 +17,7 @@ Companion machine contract: [`type-registry.json`](type-registry.json) — 74 ty
 | `../archive/architecture.html` | `system-architecture@0.1` | — | Prose + diagram. **No machine-readable MODEL object.** |
 | `../reference/reference-library.html` | `reference-library` | 23 books / 16 subjects | Has a `#library-data` MODEL; `CitationKey` target. |
 
-> Note: all six source artifacts were superseded by [`../schema/unified-schema.html`](../schema/unified-schema.html) and relocated under `docs/archive/` (and `docs/reference/` for the still-active library). The analysis below reflects the state at audit time.
+> Note: all six source artifacts were superseded by [`../schema/unified-schema.html`](../schema/unified-schema.html). The five domain/architecture artifacts were consolidated into it and removed from the tree (recoverable from git history at commit `7f3dbf3`); the reference library remains active at [`../reference/reference-library.html`](../reference/reference-library.html). The analysis below reflects the state at audit time.
 
 The four domain MODELs are internally consistent and share the stereotype color coding exactly (entity `#E2682C` / value `#5B9BD5` / reference `#6FBF73` / service `#C792EA` / render `#E0B341`). The findings below are about how they fit **together**.
 
