@@ -1,0 +1,915 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Reference Library — Wood-Frame Modeling</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --paper:#eef0ea;
+    --paper-2:#e6e8e0;
+    --ink:#191b18;
+    --ink-2:#4a4e47;
+    --ink-3:#7c8077;
+    --line:#c7cabf;
+    --line-strong:#9aa093;
+    --redline:#c8401d;       /* markup / correction — the one bold accent */
+    --slate:#3c5560;         /* leader lines, structure */
+    --kraft:#a9763c;         /* lumber tone for "encode" */
+    --field:#fbfcf9;
+    --shadow:0 1px 0 rgba(25,27,24,.04), 0 8px 24px -16px rgba(25,27,24,.4);
+    --grid:rgba(60,85,96,.07);
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;
+    background:
+      linear-gradient(var(--grid) 1px, transparent 1px) 0 0/24px 24px,
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0/24px 24px,
+      var(--paper);
+    color:var(--ink);
+    font-family:"IBM Plex Sans",system-ui,sans-serif;
+    font-size:16px; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1100px;margin:0 auto;padding:0 20px}
+  a{color:inherit}
+  ::selection{background:var(--redline);color:#fff}
+
+  /* ---- Titleblock ---- */
+  .titleblock{
+    border:1.5px solid var(--ink);
+    background:var(--field);
+    margin:28px 0 36px;
+    box-shadow:var(--shadow);
+  }
+  .tb-top{
+    display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;
+    gap:16px;padding:22px 24px 16px;border-bottom:1.5px solid var(--ink);
+  }
+  .tb-eyebrow{
+    font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--redline);font-weight:600;margin:0 0 8px;
+  }
+  h1{
+    font-family:"Bricolage Grotesque",sans-serif;font-weight:800;
+    font-size:clamp(30px,5.2vw,52px);line-height:.98;letter-spacing:-.015em;margin:0;
+    max-width:16ch;
+  }
+  .tb-meta{
+    font-family:"IBM Plex Mono",monospace;font-size:11.5px;line-height:1.7;
+    color:var(--ink-2);text-align:right;
+  }
+  .tb-meta b{color:var(--ink);font-weight:600}
+  .tb-strip{
+    display:grid;grid-template-columns:repeat(4,1fr);
+    font-family:"IBM Plex Mono",monospace;font-size:11px;
+  }
+  .tb-cell{padding:11px 24px;border-right:1px solid var(--line)}
+  .tb-cell:last-child{border-right:0}
+  .tb-cell .k{color:var(--ink-3);text-transform:uppercase;letter-spacing:.14em;font-size:10px}
+  .tb-cell .v{color:var(--ink);font-weight:500;margin-top:3px;display:block}
+  .lede{
+    font-size:17px;line-height:1.55;color:var(--ink-2);max-width:64ch;margin:0 0 30px;
+  }
+  .lede b{color:var(--ink);font-weight:600}
+
+  /* ---- Section heads ---- */
+  .sec-head{
+    display:flex;align-items:baseline;gap:14px;margin:48px 0 18px;
+    border-bottom:1.5px solid var(--ink);padding-bottom:8px;
+  }
+  .sec-num{
+    font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:13px;
+    color:var(--redline);letter-spacing:.05em;
+  }
+  .sec-head h2{
+    font-family:"Bricolage Grotesque",sans-serif;font-weight:700;
+    font-size:clamp(19px,2.6vw,25px);margin:0;letter-spacing:-.01em;
+  }
+  .sec-sub{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-3);text-align:right}
+
+  /* ---- Resolver / control panel ---- */
+  .panel{
+    border:1.5px solid var(--ink);background:var(--field);box-shadow:var(--shadow);
+    padding:20px 22px 22px;margin-bottom:14px;
+  }
+  .panel-h{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--ink-3);margin:0 0 14px}
+  .search{
+    width:100%;font:inherit;font-size:15px;padding:11px 13px;border:1.5px solid var(--line-strong);
+    background:var(--paper);color:var(--ink);border-radius:0;
+  }
+  .search:focus{outline:none;border-color:var(--redline);box-shadow:0 0 0 3px rgba(200,64,29,.15)}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}
+  .chip{
+    font-family:"IBM Plex Mono",monospace;font-size:11.5px;letter-spacing:.02em;
+    padding:6px 11px;border:1.5px solid var(--line-strong);background:var(--paper);
+    color:var(--ink-2);cursor:pointer;transition:.13s;border-radius:0;
+  }
+  .chip:hover{border-color:var(--ink);color:var(--ink)}
+  .chip[aria-pressed="true"]{background:var(--ink);color:var(--field);border-color:var(--ink)}
+  .chip.feat[aria-pressed="true"]{background:var(--redline);border-color:var(--redline)}
+  .chip.clear{border-style:dashed}
+
+  /* ---- Featured worked example ---- */
+  .worked{
+    border:1.5px solid var(--redline);background:var(--field);box-shadow:var(--shadow);
+    margin-bottom:40px;
+  }
+  .worked-h{
+    background:var(--redline);color:#fff;padding:9px 18px;
+    font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+    display:flex;justify-content:space-between;align-items:center;gap:10px;
+  }
+  .worked-h .tag{opacity:.85}
+  .worked-body{padding:18px 22px 8px}
+  .worked-body > p{margin:0 0 16px;color:var(--ink-2);font-size:15px;max-width:70ch}
+  .worked-body > p b{color:var(--ink)}
+  .resolve{display:grid;gap:10px;margin-bottom:14px}
+  .rrow{
+    display:grid;grid-template-columns:130px 1fr;gap:14px;align-items:start;
+    padding:12px 0;border-top:1px solid var(--line);
+  }
+  .rrow:first-child{border-top:0}
+  .rstep{
+    font-family:"IBM Plex Mono",monospace;font-size:11px;text-transform:uppercase;
+    letter-spacing:.08em;color:var(--slate);font-weight:600;padding-top:2px;
+  }
+  .rbook{font-weight:600;font-size:15px}
+  .ranchor{
+    font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--redline);
+    background:rgba(200,64,29,.08);padding:1px 6px;display:inline-block;margin:4px 4px 0 0;
+  }
+  .rnote{display:block;color:var(--ink-2);font-size:13.5px;margin-top:5px;max-width:64ch}
+
+  /* ---- Library layers + cards ---- */
+  .layer{margin-bottom:8px}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+  .card{
+    border:1.5px solid var(--ink);background:var(--field);padding:18px 18px 16px;
+    display:flex;flex-direction:column;transition:opacity .18s, transform .18s;
+    box-shadow:var(--shadow);
+  }
+  .card.dim{opacity:.16;filter:grayscale(.6)}
+  .card-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+  .role{
+    font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.12em;
+    text-transform:uppercase;font-weight:600;padding:4px 7px;white-space:nowrap;border:1.5px solid;
+  }
+  .role.encode{color:var(--kraft);border-color:var(--kraft)}
+  .role.convention{color:var(--slate);border-color:var(--slate)}
+  .role.reference{color:var(--ink-2);border-color:var(--line-strong)}
+  .role.validate{color:var(--redline);border-color:var(--redline)}
+  .card h3{
+    font-family:"Bricolage Grotesque",sans-serif;font-weight:700;font-size:18px;
+    line-height:1.12;margin:0;letter-spacing:-.01em;max-width:24ch;
+  }
+  .byline{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-3);margin:6px 0 0}
+  .covers{font-size:13.5px;color:var(--ink-2);margin:12px 0 0;line-height:1.5}
+  .usefor{font-size:13px;color:var(--ink);margin:10px 0 0;line-height:1.5}
+  .usefor b{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--slate);display:block;margin-bottom:3px;font-weight:600}
+  .caution{
+    font-size:12.5px;color:var(--ink-2);margin:11px 0 0;padding:9px 11px;
+    background:rgba(200,64,29,.06);border-left:2.5px solid var(--redline);line-height:1.45;
+  }
+  .caution b{color:var(--redline);font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+  .anchors{margin-top:12px;display:flex;flex-wrap:wrap;gap:5px}
+  .anchor{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--slate);
+    border:1px solid var(--line);padding:2px 6px;background:var(--paper)}
+  .topics{margin-top:auto;padding-top:13px;display:flex;flex-wrap:wrap;gap:5px}
+  .topic{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--ink-3);
+    text-transform:lowercase;letter-spacing:.02em}
+  .topic::before{content:"#";opacity:.5}
+
+  .empty{display:none;padding:30px;text-align:center;font-family:"IBM Plex Mono",monospace;
+    font-size:13px;color:var(--ink-3);border:1.5px dashed var(--line-strong)}
+
+  /* ---- LLM note + data ---- */
+  .llm{
+    border:1.5px solid var(--slate);background:var(--field);padding:18px 22px;margin:40px 0 14px;
+  }
+  .llm h2{font-family:"Bricolage Grotesque",sans-serif;font-size:18px;margin:0 0 8px}
+  .llm p{margin:0 0 10px;font-size:14px;color:var(--ink-2);max-width:74ch}
+  .llm code{font-family:"IBM Plex Mono",monospace;font-size:12.5px;background:var(--paper);padding:1px 5px;color:var(--slate)}
+  details.data{border:1.5px solid var(--line-strong);margin-bottom:48px;background:var(--field)}
+  details.data summary{
+    cursor:pointer;padding:13px 18px;font-family:"IBM Plex Mono",monospace;font-size:12px;
+    letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2);user-select:none;
+  }
+  details.data summary:hover{color:var(--ink)}
+  details.data[open] summary{border-bottom:1px solid var(--line)}
+  details.data pre{margin:0;padding:16px 18px;overflow:auto;font-family:"IBM Plex Mono",monospace;
+    font-size:11.5px;line-height:1.5;color:var(--ink-2);max-height:460px}
+
+  footer{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-3);
+    border-top:1px solid var(--line);padding:18px 0 40px;line-height:1.7}
+
+  @media (max-width:760px){
+    .grid{grid-template-columns:1fr}
+    .tb-strip{grid-template-columns:repeat(2,1fr)}
+    .tb-cell:nth-child(2){border-right:0}
+    .tb-cell{border-bottom:1px solid var(--line)}
+    .tb-meta{text-align:left}
+    .rrow{grid-template-columns:1fr;gap:4px}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ TITLEBLOCK ============ -->
+  <div class="titleblock">
+    <div class="tb-top">
+      <div>
+        <p class="tb-eyebrow">Reference Set · Wood-Frame Modeling Engine</p>
+        <h1>Reference Library</h1>
+      </div>
+      <div class="tb-meta">
+        <b>SHEET</b> RL-001<br/>
+        <b>SCOPE</b> Residential light-frame<br/>
+        <b>USE</b> Rule sourcing &amp; validation<br/>
+        <b>STATUS</b> Living document
+      </div>
+    </div>
+    <div class="tb-strip">
+      <div class="tb-cell"><span class="k">Encode</span><span class="v">Rules &amp; data the engine implements</span></div>
+      <div class="tb-cell"><span class="k">Convention</span><span class="v">What output must conform to</span></div>
+      <div class="tb-cell"><span class="k">Reference</span><span class="v">Theory, method, intuition</span></div>
+      <div class="tb-cell"><span class="k">Validate</span><span class="v">Cross-check, not source of truth</span></div>
+    </div>
+  </div>
+
+  <p class="lede">Working bibliography for a tool that goes <b>plan drawing → modeled assembly → drawings, takeoff &amp; cut list</b>. Books are grouped by where they feed the pipeline and tagged by role. The point isn't the list — it's the <b>subject resolver</b> below: name a modeling problem, get the specific reference and section that answers it.</p>
+
+  <!-- ============ RESOLVER ============ -->
+  <div class="sec-head">
+    <span class="sec-num">01</span>
+    <h2>Subject Resolver</h2>
+    <span class="sec-sub">filter library by what you're modeling</span>
+  </div>
+
+  <div class="panel">
+    <p class="panel-h">Search title, author, coverage, tag</p>
+    <input class="search" id="search" type="text" placeholder="e.g. header, framing factor, nailing schedule, joist span…" aria-label="Search the library" />
+    <div class="chips" id="chips" role="group" aria-label="Filter by modeling subject"></div>
+  </div>
+
+  <!-- featured worked example -->
+  <div class="worked">
+    <div class="worked-h">
+      <span>Worked Example · Framing a Wall with a Door or Window</span>
+      <span class="tag">opening-framing</span>
+    </div>
+    <div class="worked-body">
+      <p>The opening is where four reference layers meet on one detail: the <b>geometry</b> of king/jack/cripple studs, the <b>span</b> of the header, the <b>building-science</b> penalty of an oversized header, and the <b>fasteners</b> that tie it together. Resolved in order:</p>
+      <div class="resolve">
+        <div class="rrow">
+          <span class="rstep">Geometry</span>
+          <span>
+            <span class="rbook">Thallon — Graphic Guide to Frame Construction</span>
+            <span class="ranchor">Opening framing</span>
+            <span class="rnote">King studs, jack/trimmer studs, cripples above/below, sill &amp; header backing — the diagrammable conventions your member generator places around any opening in a wall line.</span>
+          </span>
+        </div>
+        <div class="rrow">
+          <span class="rstep">Sizing</span>
+          <span>
+            <span class="rbook">IRC — prescriptive header tables</span>
+            <span class="ranchor">R602.7</span><span class="ranchor">Tables R602.7(1–3)</span>
+            <span class="rnote">Default header size by span, supported load (roof/floor/wall above), and species/grade. Lookup first — only reach for NDS/Ambrose if the opening exceeds the prescriptive envelope.</span>
+          </span>
+        </div>
+        <div class="rrow">
+          <span class="rstep">Building science</span>
+          <span>
+            <span class="rbook">Lstiburek — Builder's Guides</span>
+            <span class="ranchor">Insulated / right-sized headers</span>
+            <span class="rnote">An oversized solid header is a thermal short-circuit. Advanced-framing detailing (single-member + insulation, or sized-to-load) reduces the framing factor your whole-wall-R calc consumes.</span>
+          </span>
+        </div>
+        <div class="rrow">
+          <span class="rstep">Fasteners</span>
+          <span>
+            <span class="rbook">IRC — Fastening Schedule</span>
+            <span class="ranchor">Table R602.3(1)</span>
+            <span class="rnote">Header-to-king, jack-to-king, cripple-to-plate connections each resolve to a count keyed on connection type &amp; method (end-nail vs toe-nail). The connection graph sums to the nail.</span>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ LIBRARY ============ -->
+  <div class="sec-head">
+    <span class="sec-num">02</span>
+    <h2>The Library</h2>
+    <span class="sec-sub" id="count">— titles</span>
+  </div>
+
+  <div id="library"></div>
+  <div class="empty" id="empty">No titles match that filter. Clear it to see the full set.</div>
+
+  <!-- ============ LLM NOTE ============ -->
+  <div class="llm">
+    <h2>For machine reference</h2>
+    <p>Every card carries <code>data-id</code>, <code>data-role</code>, <code>data-layer</code>, and <code>data-topics</code>. The canonical structured copy — books, roles, section anchors, edition cautions, and a <code>subjectIndex</code> mapping each modeling subject to its references — lives in the JSON block below under <code>#library-data</code>. To resolve a problem: match the subject to <code>subjectIndex</code>, follow the <code>bookId</code> references, read each book's <code>anchors</code> and <code>editionCaution</code>.</p>
+    <p>Section numbers (e.g. <code>R602.7</code>) follow common I-code usage but <b>shift between cycles</b> — treat them as pointers to verify against the edition your jurisdiction adopted, not constants.</p>
+  </div>
+
+  <details class="data">
+    <summary>▸ Structured data — #library-data (JSON)</summary>
+    <pre id="json-view"></pre>
+  </details>
+
+  <footer>
+    REFERENCE LIBRARY · RL-001 · Compiled for a residential light-frame modeling engine.<br/>
+    Codes &amp; manufacturer data are versioned — confirm current editions and your AHJ's adopted cycle before encoding any specific value.
+  </footer>
+
+</div>
+
+<!-- ===================== DATA ===================== -->
+<script type="application/json" id="library-data">
+{
+  "meta": {
+    "title": "Reference Library — Wood-Frame Modeling Engine",
+    "scope": "Residential light-frame design → drawings, takeoff, cut list",
+    "roles": {
+      "encode": "Rules or data the engine implements directly",
+      "convention": "Standards the generated drawings/output must conform to",
+      "reference": "Theory, method, and design intuition",
+      "validate": "Top-down cross-check, not a primary source of truth"
+    },
+    "editionWarning": "I-codes run a 3-year cycle and jurisdictions lag publication; NDS, ASHRAE Fundamentals, IECC, and manufacturer span data are all versioned. Parameterize edition by jurisdiction; never hard-code table values as constants. Section numbers are pointers to verify, not guarantees."
+  },
+  "layers": [
+    "Geometry & Assembly Logic",
+    "Prescriptive Code & Loads",
+    "Structural Sizing (beyond prescriptive)",
+    "Building Science & Envelope",
+    "Environmental Systems",
+    "Construction Documents & Methods",
+    "Estimating & Takeoff"
+  ],
+  "books": [
+    {
+      "id": "thallon",
+      "title": "Graphic Guide to Frame Construction",
+      "author": "Rob Thallon (Taunton)",
+      "layer": "Geometry & Assembly Logic",
+      "role": "encode",
+      "covers": "Illustrated conventions for platform framing: plates, stud layout, corners, T-intersections, opening framing (king/jack/cripple), floor joists, blocking/bridging, sheathing layout.",
+      "usedFor": "Primary rule source for the member-generation engine — 'given a wall line + openings, place the sticks.'",
+      "anchors": ["Wall framing", "Opening framing", "Floor framing", "Corner & T conditions"],
+      "topics": ["wall-framing","opening-framing","floor-framing","corners-t"],
+      "editionCaution": null
+    },
+    {
+      "id": "gross",
+      "title": "Roof Framing",
+      "author": "Marshall Gross",
+      "layer": "Geometry & Assembly Logic",
+      "role": "encode",
+      "covers": "Commons, hips, valleys, jacks, ridge, ceiling-joist/rafter-tie logic; the geometry of cut roofs.",
+      "usedFor": "Rule source for the roof-geometry generator (the hard layout problem). Trusses are interfaced to, not computed.",
+      "anchors": ["Common/hip/valley geometry", "Rafter layout"],
+      "topics": ["roof-framing"],
+      "editionCaution": null
+    },
+    {
+      "id": "irc",
+      "title": "International Residential Code (IRC)",
+      "author": "ICC",
+      "layer": "Prescriptive Code & Loads",
+      "role": "encode",
+      "covers": "Prescriptive path for one- and two-family dwellings: framing sizes/spacing, fastening schedule, header & joist spans, wall bracing, foundations, and life-safety (egress, stairs, ceiling height, guards, light/vent).",
+      "usedFor": "The core rule engine. Default sizing + the literal nailing schedule + habitability checks.",
+      "anchors": ["Table R602.3(1) fastening", "R602.3 / Table R602.3(5) studs", "R602.7 headers", "R602.10 bracing", "Tables R502.3.1 joist spans", "R802 rafters/ceiling", "R403 footings", "R305/R310/R311/R312 life-safety"],
+      "topics": ["wall-framing","opening-framing","fastening","floor-framing","roof-framing","loads-lateral","life-safety","foundation"],
+      "editionCaution": "3-year cycle; adoption lags. Parameterize by the jurisdiction's adopted edition; verify section numbers per cycle."
+    },
+    {
+      "id": "iecc",
+      "title": "International Energy Conservation Code (IECC)",
+      "author": "ICC",
+      "layer": "Prescriptive Code & Loads",
+      "role": "encode",
+      "covers": "Prescriptive and performance envelope requirements — R-value/U-factor minimums by climate zone, air-sealing.",
+      "usedFor": "The target your whole-wall-R / framing-factor calc must clear. Climate-zone keyed.",
+      "anchors": ["R402 envelope", "Table R402.1.x by climate zone"],
+      "topics": ["thermal-envelope"],
+      "editionCaution": "Versioned and adopted separately from the IRC; some jurisdictions amend heavily. Climate zone drives every value."
+    },
+    {
+      "id": "wfcm",
+      "title": "Wood Frame Construction Manual (WFCM)",
+      "author": "AWC",
+      "layer": "Prescriptive Code & Loads",
+      "role": "encode",
+      "covers": "Engineered/prescriptive provisions tying member sizing, connections, uplift, and lateral bracing into one consistent prescriptive system within stated wind/seismic/snow limits.",
+      "usedFor": "The connective rule source that makes 'a permittable wood house by lookup' possible. Connection & uplift logic beyond the IRC basics.",
+      "anchors": ["Prescriptive connection tables", "Uplift & lateral provisions"],
+      "topics": ["wall-framing","fastening","loads-lateral","opening-framing"],
+      "editionCaution": "Tracks ASCE 7 load cycles; pair with the matching code edition."
+    },
+    {
+      "id": "nds",
+      "title": "National Design Specification for Wood Construction (NDS)",
+      "author": "AWC",
+      "layer": "Structural Sizing (beyond prescriptive)",
+      "role": "encode",
+      "covers": "Allowable stresses (Fb, Fv, Fc, E) and adjustment factors (load duration, size, repetitive member, wet service); connection design.",
+      "usedFor": "The sizing engine for members that fall OUTSIDE the prescriptive envelope. Source of truth for adjustment-factor logic.",
+      "anchors": ["Reference design values + adjustment factors", "Connection (fastener) design"],
+      "topics": ["sizing-exception","fastening"],
+      "editionCaution": "Revised periodically; ASD and LRFD formats coexist. Never hard-code allowable values — version them."
+    },
+    {
+      "id": "asce7",
+      "title": "Minimum Design Loads (ASCE 7)",
+      "author": "ASCE",
+      "layer": "Prescriptive Code & Loads",
+      "role": "encode",
+      "covers": "Dead/live/snow/wind/seismic load basis underlying the prescriptive tables.",
+      "usedFor": "Consumed THROUGH the WFCM/IRC, not implemented directly. Defines the loads your prescriptive limits assume.",
+      "anchors": ["Load combinations", "Wind & seismic basis"],
+      "topics": ["loads-lateral"],
+      "editionCaution": "The load maps and values change between editions and drive everything downstream."
+    },
+    {
+      "id": "ewp",
+      "title": "Engineered-Lumber Span Tables (mfr literature)",
+      "author": "Trus Joist / Weyerhaeuser, APA EWS, et al.",
+      "layer": "Structural Sizing (beyond prescriptive)",
+      "role": "encode",
+      "covers": "I-joist, LVL, LSL, PSL, and glulam allowable spans and details — product-specific.",
+      "usedFor": "Most modern floors are NOT sawn lumber. Joist generator must read manufacturer tables, not NDS hand-calc, for EWP.",
+      "anchors": ["Product span tables", "Hole/notch & bearing details"],
+      "topics": ["floor-framing","sizing-exception"],
+      "editionCaution": "Proprietary and version-specific live data; tie to a product + revision, treat as an integration not a constant."
+    },
+    {
+      "id": "tpi",
+      "title": "Truss design standard / mfr engineering (TPI 1)",
+      "author": "Truss Plate Institute / fabricators",
+      "layer": "Structural Sizing (beyond prescriptive)",
+      "role": "reference",
+      "covers": "Metal-plate-connected wood truss design responsibility and delivery.",
+      "usedFor": "Trusses are an interface, not something the tool computes. Model the layout/loads handoff to the fabricator's engineering.",
+      "anchors": ["Design responsibility split", "Truss placement"],
+      "topics": ["roof-framing","floor-framing"],
+      "editionCaution": null
+    },
+    {
+      "id": "ambrose",
+      "title": "Simplified Design of Wood Structures",
+      "author": "James Ambrose (Parker/Tripeny series)",
+      "layer": "Structural Sizing (beyond prescriptive)",
+      "role": "encode",
+      "covers": "Architect-facing design-by-table workflow: bending members (size by Fb, check shear + deflection), compression members, combined stress, connections, diaphragms/shear walls.",
+      "usedFor": "The 'size by Fb, then verify shear & deflection (L/360 live, L/240 total)' workflow for sawn-lumber exceptions. Encodable heuristics.",
+      "anchors": ["Bending-member workflow", "Deflection checks", "Header/lintel sizing"],
+      "topics": ["sizing-exception","opening-framing","floor-framing"],
+      "editionCaution": "Rooted in ASD and an older NDS; method & intuition age well, specific allowable values lag — cross-check against current NDS."
+    },
+    {
+      "id": "schodek",
+      "title": "Structures",
+      "author": "Daniel Schodek (Schodek & Bechthold)",
+      "layer": "Structural Sizing (beyond prescriptive)",
+      "role": "reference",
+      "covers": "Quantitative structural behavior across systems; the more rigorous companion to the simplified texts.",
+      "usedFor": "Understanding WHY a member or system behaves as it does when prescriptive logic runs out.",
+      "anchors": ["System behavior", "Member analysis"],
+      "topics": ["sizing-exception"],
+      "editionCaution": null
+    },
+    {
+      "id": "salvadori",
+      "title": "Why Buildings Stand Up / Structure in Architecture",
+      "author": "Mario Salvadori (w/ Heller)",
+      "layer": "Structural Sizing (beyond prescriptive)",
+      "role": "reference",
+      "covers": "Accessible structural intuition — load paths, how buildings resist gravity and lateral forces.",
+      "usedFor": "Framing the mental model behind load-path checks; explanatory copy for the tool's UI.",
+      "anchors": ["Load paths", "Structural intuition"],
+      "topics": ["loads-lateral","sizing-exception"],
+      "editionCaution": null
+    },
+    {
+      "id": "lstiburek",
+      "title": "Builder's Guides (climate-specific)",
+      "author": "Joseph Lstiburek (Building Science Corp.)",
+      "layer": "Building Science & Envelope",
+      "role": "reference",
+      "covers": "Applied heat-air-moisture control by climate; advanced framing (OVE): 24\" o.c., single top plate, two-stud corners, ladder T's, insulated/right-sized headers, stack framing.",
+      "usedFor": "Drives the advanced-framing variants and tells you which geometric choices move the framing factor (conventional ~25% → advanced ~15-18%).",
+      "anchors": ["Advanced framing / OVE", "Insulated headers", "Climate-specific assemblies", "BSI digests"],
+      "topics": ["wall-framing","opening-framing","corners-t","thermal-envelope","moisture"],
+      "editionCaution": "Climate-specific — match the volume to the build's climate zone."
+    },
+    {
+      "id": "moisture",
+      "title": "Moisture Control Handbook",
+      "author": "Lstiburek & Carmody",
+      "layer": "Building Science & Envelope",
+      "role": "reference",
+      "covers": "Vapor control, drying potential, WRB strategy, assembly moisture behavior by climate.",
+      "usedFor": "The 'vapor barrier / WRB / siding' system layers your materials list grows into — and whether an assembly can dry.",
+      "anchors": ["Vapor control strategy", "Assembly drying"],
+      "topics": ["moisture","thermal-envelope"],
+      "editionCaution": null
+    },
+    {
+      "id": "straube-enclosures",
+      "title": "Building Science for Building Enclosures",
+      "author": "Straube & Burnett",
+      "layer": "Building Science & Envelope",
+      "role": "reference",
+      "covers": "Academic backbone for enclosure physics — heat, air, and moisture transport through assemblies.",
+      "usedFor": "The theory under the envelope calcs; most directly relevant to modeling assembly performance.",
+      "anchors": ["HAM transport", "Enclosure physics"],
+      "topics": ["thermal-envelope","moisture"],
+      "editionCaution": null
+    },
+    {
+      "id": "straube-hpe",
+      "title": "High Performance Enclosures",
+      "author": "John Straube",
+      "layer": "Building Science & Envelope",
+      "role": "reference",
+      "covers": "Design-forward companion — applying enclosure physics to high-performance assemblies.",
+      "usedFor": "Assembly-level design choices for the envelope layers above framing.",
+      "anchors": ["High-performance assemblies"],
+      "topics": ["thermal-envelope","moisture"],
+      "editionCaution": null
+    },
+    {
+      "id": "hutcheon",
+      "title": "Building Science for a Cold Climate",
+      "author": "Hutcheon & Handegord (NRC Canada)",
+      "layer": "Building Science & Envelope",
+      "role": "reference",
+      "covers": "Foundational older text; much modern enclosure theory traces to it and the NRC/CMHC tradition.",
+      "usedFor": "Roots of the theory; deep background for cold-climate assembly logic.",
+      "anchors": ["Foundational enclosure theory"],
+      "topics": ["thermal-envelope","moisture"],
+      "editionCaution": null
+    },
+    {
+      "id": "ashrae",
+      "title": "ASHRAE Handbook — Fundamentals",
+      "author": "ASHRAE",
+      "layer": "Building Science & Envelope",
+      "role": "encode",
+      "covers": "Psychrometrics, heat transfer, material conductivities, and the parallel-path / isothermal-planes methods for effective U-value.",
+      "usedFor": "Turns the framing fraction into an honest whole-wall U-value. The citation of record for conductivity constants & methods.",
+      "anchors": ["Parallel-path / isothermal-planes method", "Material conductivity tables", "Psychrometrics"],
+      "topics": ["thermal-envelope"],
+      "editionCaution": "Fundamentals volume is reissued on a multi-year cycle; cite the edition for any property value you encode."
+    },
+    {
+      "id": "meeb",
+      "title": "Mechanical & Electrical Equipment for Buildings (MEEB)",
+      "author": "Grondzik & Kwok",
+      "layer": "Environmental Systems",
+      "role": "reference",
+      "covers": "Comprehensive environmental/MEP systems reference for buildings.",
+      "usedFor": "When the model extends past the shell into systems integration & rough-in coordination.",
+      "anchors": ["MEP systems", "Sizing & integration"],
+      "topics": ["mep"],
+      "editionCaution": null
+    },
+    {
+      "id": "lechner",
+      "title": "Heating, Cooling, Lighting",
+      "author": "Norbert Lechner",
+      "layer": "Environmental Systems",
+      "role": "reference",
+      "covers": "Sustainable design strategy for thermal comfort and daylighting.",
+      "usedFor": "Passive/comfort logic feeding envelope and orientation decisions.",
+      "anchors": ["Comfort strategy", "Daylighting"],
+      "topics": ["mep","thermal-envelope"],
+      "editionCaution": null
+    },
+    {
+      "id": "graphic-standards",
+      "title": "Architectural Graphic Standards",
+      "author": "AIA / Ramsey & Sleeper",
+      "layer": "Construction Documents & Methods",
+      "role": "convention",
+      "covers": "The detailing reference — what wall sections, schedules, and standard details must actually show.",
+      "usedFor": "Defines the drawings the tool EMITS against. The convention for detail content.",
+      "anchors": ["Standard details", "Wall sections", "Schedules"],
+      "topics": ["documents"],
+      "editionCaution": null
+    },
+    {
+      "id": "ching",
+      "title": "Building Construction Illustrated",
+      "author": "Francis D.K. Ching",
+      "layer": "Construction Documents & Methods",
+      "role": "convention",
+      "covers": "Widely-assigned illustrated methods + detailing across building systems.",
+      "usedFor": "Convention reference for how assemblies and details are drawn and read.",
+      "anchors": ["Assembly detailing", "Systems integration"],
+      "topics": ["documents"],
+      "editionCaution": null
+    },
+    {
+      "id": "allen-iano",
+      "title": "Fundamentals of Building Construction: Materials & Methods",
+      "author": "Edward Allen & Joseph Iano",
+      "layer": "Construction Documents & Methods",
+      "role": "convention",
+      "covers": "Standard methods text — materials, sequences, and how buildings go together.",
+      "usedFor": "Grounds the construction-sequence and materials logic the model and docs assume.",
+      "anchors": ["Materials & methods", "Construction sequence"],
+      "topics": ["documents"],
+      "editionCaution": null
+    },
+    {
+      "id": "nationalcad",
+      "title": "U.S. National CAD Standard (NCS)",
+      "author": "NIBS",
+      "layer": "Construction Documents & Methods",
+      "role": "convention",
+      "covers": "Layer naming, sheet organization, and drawing-set conventions.",
+      "usedFor": "If output should look industry-conventional: sheet/layer organization for the drawing emitter.",
+      "anchors": ["Sheet organization", "Layer naming"],
+      "topics": ["documents"],
+      "editionCaution": null
+    },
+    {
+      "id": "rsmeans",
+      "title": "RSMeans Building Construction Cost Data",
+      "author": "Gordian / RSMeans",
+      "layer": "Estimating & Takeoff",
+      "role": "validate",
+      "covers": "Assembly-level material + labor line items (e.g., per-LF framed wall, fasteners included).",
+      "usedFor": "Top-down sanity check against the bottom-up connection-graph takeoff. Divergence usually means a missed connection class.",
+      "anchors": ["Assembly line items", "Per-LF framed-wall cost"],
+      "topics": ["takeoff"],
+      "editionCaution": "Pricing is regional & time-stamped; use as validator, not as live supplier pricing (that's a SKU integration)."
+    }
+  ],
+  "subjectIndex": {
+    "wall-framing": {
+      "label": "Wall framing — stud layout & spacing",
+      "refs": [
+        {"book":"thallon","anchor":"Wall framing","note":"plate/stud placement conventions"},
+        {"book":"irc","anchor":"R602.3 / Table R602.3(5)","note":"stud size, spacing, height limits"},
+        {"book":"lstiburek","anchor":"Advanced framing / OVE","note":"24\" o.c., single top plate variants"},
+        {"book":"wfcm","anchor":"Prescriptive wall framing","note":"within wind/seismic limits"}
+      ]
+    },
+    "opening-framing": {
+      "label": "Wall opening — door / window",
+      "refs": [
+        {"book":"thallon","anchor":"Opening framing","note":"king/jack/cripple + sill geometry"},
+        {"book":"irc","anchor":"R602.7 + Tables R602.7(1-3)","note":"header span by load"},
+        {"book":"lstiburek","anchor":"Insulated/right-sized headers","note":"framing-factor reduction"},
+        {"book":"irc","anchor":"Table R602.3(1)","note":"fasteners at header/king/jack/cripple"},
+        {"book":"ambrose","anchor":"Header/lintel sizing","note":"when span exceeds prescriptive"}
+      ]
+    },
+    "fastening": {
+      "label": "Fastening / nailing schedule",
+      "refs": [
+        {"book":"irc","anchor":"Table R602.3(1)","note":"THE source; count keyed on connection type AND method (end-nail 2-16d vs toe-nail 4-8d)"},
+        {"book":"wfcm","anchor":"Connection tables","note":"uplift & lateral fastening"},
+        {"book":"nds","anchor":"Connection design","note":"fasteners outside the schedule"}
+      ]
+    },
+    "floor-framing": {
+      "label": "Floor framing — joists, blocking, openings",
+      "refs": [
+        {"book":"thallon","anchor":"Floor framing","note":"doubling at openings, blocking/bridging"},
+        {"book":"irc","anchor":"Tables R502.3.1(1-2)","note":"sawn-lumber joist spans"},
+        {"book":"ewp","anchor":"Product span tables","note":"I-joist/LVL — most modern floors"},
+        {"book":"ambrose","anchor":"Bending-member workflow","note":"non-prescriptive sawn members"}
+      ]
+    },
+    "corners-t": {
+      "label": "Corners & T-intersections",
+      "refs": [
+        {"book":"thallon","anchor":"Corner & T conditions","note":"backing conventions"},
+        {"book":"lstiburek","anchor":"Two-stud corners, ladder T's","note":"advanced framing — lowers framing factor"}
+      ]
+    },
+    "thermal-envelope": {
+      "label": "Thermal — framing factor / whole-wall R / bridging",
+      "refs": [
+        {"book":"ashrae","anchor":"Parallel-path / isothermal-planes","note":"effective U-value + conductivities"},
+        {"book":"straube-enclosures","anchor":"HAM transport","note":"enclosure physics"},
+        {"book":"lstiburek","anchor":"Advanced framing","note":"choices that move the framing factor"},
+        {"book":"iecc","anchor":"Table R402.1.x","note":"prescriptive R/U target by climate zone"}
+      ]
+    },
+    "moisture": {
+      "label": "Moisture / vapor control / WRB",
+      "refs": [
+        {"book":"moisture","anchor":"Vapor control strategy","note":"drying potential by climate"},
+        {"book":"straube-enclosures","anchor":"HAM transport","note":"moisture transport theory"},
+        {"book":"hutcheon","anchor":"Foundational theory","note":"cold-climate roots"}
+      ]
+    },
+    "roof-framing": {
+      "label": "Roof framing — rafters, hips, valleys, ties",
+      "refs": [
+        {"book":"gross","anchor":"Common/hip/valley geometry","note":"cut-roof layout"},
+        {"book":"irc","anchor":"R802 + rafter span tables","note":"prescriptive rafter/ceiling"},
+        {"book":"tpi","anchor":"Truss handoff","note":"interface to fabricator engineering, not computed"}
+      ]
+    },
+    "loads-lateral": {
+      "label": "Loads — wind/seismic/snow & bracing",
+      "refs": [
+        {"book":"asce7","anchor":"Load basis","note":"consumed via WFCM/IRC"},
+        {"book":"wfcm","anchor":"Lateral & uplift","note":"prescriptive bracing system"},
+        {"book":"irc","anchor":"R301 + R602.10","note":"design criteria & wall bracing"}
+      ]
+    },
+    "sizing-exception": {
+      "label": "Member sizing beyond prescriptive",
+      "refs": [
+        {"book":"nds","anchor":"Design values + adjustment factors","note":"source of truth for ASD/LRFD"},
+        {"book":"ambrose","anchor":"Bending-member workflow","note":"encodable sawn-lumber heuristics"},
+        {"book":"ewp","anchor":"Product span tables","note":"engineered lumber"},
+        {"book":"schodek","anchor":"System behavior","note":"why it behaves that way"}
+      ]
+    },
+    "life-safety": {
+      "label": "Life-safety / habitability",
+      "refs": [
+        {"book":"irc","anchor":"R303/R305/R310/R311/R312","note":"light-vent, ceiling height, egress, stairs, guards"}
+      ]
+    },
+    "foundation": {
+      "label": "Foundation — footings & stem walls",
+      "refs": [
+        {"book":"irc","anchor":"R403 + Table R403.1","note":"prescriptive footing/stem-wall by soil bearing"}
+      ]
+    },
+    "mep": {
+      "label": "MEP / environmental systems",
+      "refs": [
+        {"book":"meeb","anchor":"MEP systems","note":"sizing & integration"},
+        {"book":"lechner","anchor":"Comfort strategy","note":"passive/daylighting"}
+      ]
+    },
+    "documents": {
+      "label": "Construction documents & detailing",
+      "refs": [
+        {"book":"graphic-standards","anchor":"Standard details","note":"what each detail must show"},
+        {"book":"ching","anchor":"Assembly detailing","note":"how assemblies are drawn"},
+        {"book":"nationalcad","anchor":"Sheet/layer organization","note":"industry-conventional output"}
+      ]
+    },
+    "takeoff": {
+      "label": "Estimating / takeoff / validation",
+      "refs": [
+        {"book":"rsmeans","anchor":"Assembly line items","note":"top-down validator vs bottom-up connection graph"}
+      ]
+    }
+  }
+}
+</script>
+
+<!-- ===================== RENDER + INTERACTION ===================== -->
+<script>
+(function(){
+  var DATA = JSON.parse(document.getElementById('library-data').textContent);
+  var ROLE_LABEL = {encode:'Encode', convention:'Convention', reference:'Reference', validate:'Validate'};
+
+  // pretty-print JSON view
+  document.getElementById('json-view').textContent = JSON.stringify(DATA, null, 2);
+
+  // ---- chips from subjectIndex ----
+  var chipsEl = document.getElementById('chips');
+  var activeTopic = null;
+
+  var clearChip = document.createElement('button');
+  clearChip.className = 'chip clear';
+  clearChip.textContent = 'show all';
+  clearChip.setAttribute('aria-pressed','true');
+  clearChip.addEventListener('click', function(){ setTopic(null); });
+  chipsEl.appendChild(clearChip);
+
+  Object.keys(DATA.subjectIndex).forEach(function(key){
+    var s = DATA.subjectIndex[key];
+    var b = document.createElement('button');
+    b.className = 'chip' + (key === 'opening-framing' ? ' feat' : '');
+    b.textContent = s.label.split(' — ')[0].toLowerCase();
+    b.title = s.label;
+    b.setAttribute('aria-pressed','false');
+    b.dataset.topic = key;
+    b.addEventListener('click', function(){ setTopic(activeTopic === key ? null : key); });
+    chipsEl.appendChild(b);
+  });
+
+  // ---- library cards grouped by layer ----
+  var lib = document.getElementById('library');
+  DATA.layers.forEach(function(layer, i){
+    var books = DATA.books.filter(function(bk){ return bk.layer === layer; });
+    if(!books.length) return;
+
+    var head = document.createElement('div');
+    head.className = 'sec-head';
+    head.style.marginTop = i === 0 ? '8px' : '36px';
+    head.innerHTML = '<span class="sec-num">'+ String(i+1).padStart(2,'0') +'</span>'
+      + '<h2 style="font-size:18px">'+ layer +'</h2>'
+      + '<span class="sec-sub">'+ books.length +' title'+(books.length>1?'s':'')+'</span>';
+    lib.appendChild(head);
+
+    var grid = document.createElement('div');
+    grid.className = 'grid';
+    books.forEach(function(bk){ grid.appendChild(card(bk)); });
+    lib.appendChild(grid);
+  });
+
+  document.getElementById('count').textContent = DATA.books.length + ' titles';
+
+  function card(bk){
+    var el = document.createElement('article');
+    el.className = 'card';
+    el.dataset.id = bk.id;
+    el.dataset.role = bk.role;
+    el.dataset.layer = bk.layer;
+    el.dataset.topics = (bk.topics||[]).join(' ');
+    el.dataset.search = (bk.title+' '+bk.author+' '+bk.covers+' '+(bk.topics||[]).join(' ')+' '+(bk.anchors||[]).join(' ')).toLowerCase();
+
+    var html = '<div class="card-top">'
+      + '<h3>'+ bk.title +'</h3>'
+      + '<span class="role '+ bk.role +'">'+ ROLE_LABEL[bk.role] +'</span>'
+      + '</div>'
+      + '<p class="byline">'+ bk.author +'</p>'
+      + '<p class="covers">'+ bk.covers +'</p>'
+      + '<p class="usefor"><b>In the tool</b>'+ bk.usedFor +'</p>';
+
+    if(bk.anchors && bk.anchors.length){
+      html += '<div class="anchors">';
+      bk.anchors.forEach(function(a){ html += '<span class="anchor">'+ a +'</span>'; });
+      html += '</div>';
+    }
+    if(bk.editionCaution){
+      html += '<p class="caution"><b>Edition</b><br/>'+ bk.editionCaution +'</p>';
+    }
+    if(bk.topics && bk.topics.length){
+      html += '<div class="topics">';
+      bk.topics.forEach(function(t){ html += '<span class="topic">'+ t +'</span>'; });
+      html += '</div>';
+    }
+    el.innerHTML = html;
+    return el;
+  }
+
+  // ---- filtering ----
+  var searchEl = document.getElementById('search');
+  var emptyEl = document.getElementById('empty');
+
+  function setTopic(key){
+    activeTopic = key;
+    searchEl.value = '';
+    chipsEl.querySelectorAll('.chip').forEach(function(c){
+      if(c.classList.contains('clear')) c.setAttribute('aria-pressed', key ? 'false':'true');
+      else c.setAttribute('aria-pressed', c.dataset.topic === key ? 'true':'false');
+    });
+    apply();
+  }
+
+  function apply(){
+    var q = searchEl.value.trim().toLowerCase();
+    var shown = 0;
+    document.querySelectorAll('.card').forEach(function(c){
+      var ok = true;
+      if(activeTopic) ok = (' '+c.dataset.topics+' ').indexOf(' '+activeTopic+' ') > -1;
+      if(ok && q) ok = c.dataset.search.indexOf(q) > -1;
+      c.classList.toggle('dim', !ok);
+      if(ok) shown++;
+    });
+    emptyEl.style.display = shown === 0 ? 'block' : 'none';
+    // hide layer heads with no visible cards when filtering hard
+    document.querySelectorAll('#library .grid').forEach(function(g){
+      var any = Array.prototype.some.call(g.querySelectorAll('.card'), function(c){ return !c.classList.contains('dim'); });
+      g.previousElementSibling.style.opacity = any ? '1' : '.3';
+    });
+  }
+
+  searchEl.addEventListener('input', function(){
+    if(searchEl.value.trim()){ activeTopic = null;
+      chipsEl.querySelectorAll('.chip').forEach(function(c){ c.setAttribute('aria-pressed', c.classList.contains('clear')?'true':'false'); });
+    }
+    apply();
+  });
+})();
+</script>
+</body>
+</html>
