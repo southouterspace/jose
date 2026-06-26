@@ -10,12 +10,14 @@ Companion machine contract: [`type-registry.json`](type-registry.json) — 74 ty
 
 | Artifact | Schema | Types | Notes |
 |---|---|---|---|
-| `lumber-schema_1.html` | `parametric-lumber@0.2` | 14 | 5 layers. The tick-invariant reference implementation. |
-| `solver-schema_1.html` | `framing-solver@0.1.0` | 20 (+2 re-carded) | 6 layers. Re-cards `Piece` and `SupplierSku` as cross-refs. |
-| `drawing-workspace-schema_1.html` | `drawing-workspace@0.1.0` | **23** | 6 groups. ⚠ Prior session recalled "22"; the MODEL actually has 23 (A5·B4·C6·D2·E4·F2). |
-| `design-standard-schema.html` | `design-standard@0.1` | 13 | Strategy pattern, 3 tiers. Proposes the `LumberStock→Stock` rename. |
-| `architecture.html` | `system-architecture@0.1` | — | Prose + diagram. **No machine-readable MODEL object.** |
-| `reference-library.html` | `reference-library` | 23 books / 16 subjects | Has a `#library-data` MODEL; `CitationKey` target. |
+| `../archive/lumber-schema.html` | `parametric-lumber@0.2` | 14 | 5 layers. The tick-invariant reference implementation. |
+| `../archive/framing-solver-schema.html` | `framing-solver@0.1.0` | 20 (+2 re-carded) | 6 layers. Re-cards `Piece` and `SupplierSku` as cross-refs. |
+| `../archive/drawing-workspace-schema.html` | `drawing-workspace@0.1.0` | **23** | 6 groups. ⚠ Prior session recalled "22"; the MODEL actually has 23 (A5·B4·C6·D2·E4·F2). |
+| `../archive/design-standard-schema.html` | `design-standard@0.1` | 13 | Strategy pattern, 3 tiers. Proposes the `LumberStock→Stock` rename. |
+| `../archive/architecture.html` | `system-architecture@0.1` | — | Prose + diagram. **No machine-readable MODEL object.** |
+| `../reference/reference-library.html` | `reference-library` | 23 books / 16 subjects | Has a `#library-data` MODEL; `CitationKey` target. |
+
+> Note: all six source artifacts were superseded by [`../schema/unified-schema.html`](../schema/unified-schema.html) and relocated under `docs/archive/` (and `docs/reference/` for the still-active library). The analysis below reflects the state at audit time.
 
 The four domain MODELs are internally consistent and share the stereotype color coding exactly (entity `#E2682C` / value `#5B9BD5` / reference `#6FBF73` / service `#C792EA` / render `#E0B341`). The findings below are about how they fit **together**.
 
