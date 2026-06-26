@@ -1,7 +1,7 @@
 {
  "meta": {
   "schema": "parametric-bim-core",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "tagline": "One material-agnostic BIM core; materials and cost models plug in at the seams.",
   "baseUnit": "Linear geometry stored as integer ticks @ 1/32in (1in=32 ticks). Area/volume/weight/price/cost derived as real. Money = real decimal USD.",
   "units": "US customary (in, ft, lb, psi, psf, USD) over an integer-tick geometry substrate.",
@@ -15,7 +15,13 @@
   ],
   "techStack": "Rust/WASM worker owns canonical SoA tick arrays + dependency-graph recompute + BREP kernel (truck); JS main thread owns a read-only render mirror + ToolRunner; wasm-bindgen commands + shared linear memory (two channels); Neon/Postgres + Drizzle snapshots; Cloudflare Workers/R2 at the edge.",
   "pricing": "stored PriceQuote snapshots (real decimal USD), region- and time-stamped; live supplier inventory is an integration, not a constant.",
-  "consolidates": "Supersedes the six prior artifacts (lumber, solver, drawing-workspace, design-standard, architecture, reference-library) into one cohesive schema."
+  "consolidates": "Supersedes the six prior artifacts (lumber, solver, drawing-workspace, design-standard, architecture, reference-library) into one cohesive schema.",
+  "resolved": [
+   "Markup/allowance compounding: allowances are direct cost (markup-eligible, roll into directCostSubtotal); each Markup carries an explicit appliesToBase so order is deterministic data; tax is a Markup with a jurisdiction-configurable base.",
+   "On-center spacing reclassified from linear ticks to a SpacingModule parameter (real exactInches); FramingSolver derives integer-tick positions. 19.2in OC is the proof case.",
+   "Material leaves (NDS_Wood/AISI_CFS/ACI_Concrete/AISC_Steel/TMS_Masonry) re-stereotyped \u00abservice\u00bb Strategy implementers; \u00abinterface\u00bb reserved for DesignStandard; data tables stay \u00abreference\u00bb.",
+   "CutOperation renamed Cut and modeled as an immutable \u00abentity\u00bb domain event; the cutting ACT stays in CuttingStockSolver (\u00abservice\u00bb)."
+  ]
  },
  "pipeline": [
   "drawing",
@@ -238,10 +244,10 @@
        "note": "Discriminated provenance of the basis \u2014 extension seam for future non-axis-aligned construction planes. Add a variant, not a field. Captures drawing's 'named by spanning axes OR face-derived' as a discriminator."
       }
      ],
-     "notes": "RESOLVES S1-D (known collision #1): Plane was defined in drawing (group B, value) but consumed by materials.CutOperation.plane and solver.Face.plane. Now single-homed here as a value; all three reference it. drawing keeps SketchPlane, which WRAPS this Plane + local U/V + source face \u2014 only the bare Plane moved down. The 2D->3D lift lift(u,v)=origin + u*basisU + v*basisV is the shared projectToPlane primitive drawing's crossRefs already park 'low in geometry-kernel/util'. Note: drawing's original Plane carried a single 'basisAxes' pair; expanded to explicit basisU/basisV UnitVec3 so face-derived and uvSpanned planes (non-axis-aligned) are representable \u2014 the extension seam.",
+     "notes": "RESOLVES S1-D (known collision #1): Plane was defined in drawing (group B, value) but consumed by materials.Cut.plane and solver.Face.plane. Now single-homed here as a value; all three reference it. drawing keeps SketchPlane, which WRAPS this Plane + local U/V + source face \u2014 only the bare Plane moved down. The 2D->3D lift lift(u,v)=origin + u*basisU + v*basisV is the shared projectToPlane primitive drawing's crossRefs already park 'low in geometry-kernel/util'. Note: drawing's original Plane carried a single 'basisAxes' pair; expanded to explicit basisU/basisV UnitVec3 so face-derived and uvSpanned planes (non-axis-aligned) are representable \u2014 the extension seam.",
      "canonicalHome": "geometry-kernel",
      "crossRefs": [
-      "materials-stock.CutOperation.plane",
+      "materials-stock.Cut.plane",
       "geometry-kernel.Face.plane",
       "workspace-render.SketchPlane.plane (wraps this)",
       "drawing projectToPlane(plane) (shared util)",
@@ -642,7 +648,7 @@
        "note": "Project a plane-local TickVec2 to a world TickVec3 (origin + u*basisU + v*basisV). The shared projectToPlane primitive drawing parks 'low in the kernel'."
       }
      ],
-     "notes": "Splits the draft's overloaded PushPullOp into VALUE (the recorded op) + SERVICE (this verb that applies it), fixing the DDD stereotype error: a process stored in an edits[] array cannot be a service. Service stereotype = verb/process, consistent with solver.CutOperation/PushPull semantics. Honors the dirty-propagation contract of the Rust worker (dependency-graph recompute over SoA tick arrays); exposes the shared lift/projectToPlane util drawing's crossRefs require.",
+     "notes": "Splits the draft's overloaded PushPullOp into VALUE (the recorded op) + SERVICE (this verb that applies it), fixing the DDD stereotype error: a process stored in an edits[] array cannot be a service. Service stereotype = verb/process, consistent with solver.Cut/PushPull semantics. Honors the dirty-propagation contract of the Rust worker (dependency-graph recompute over SoA tick arrays); exposes the shared lift/projectToPlane util drawing's crossRefs require.",
      "canonicalHome": "geometry-kernel",
      "crossRefs": [
       "drawing.DrawOp (kind=pushPull) -> applyPushPull",
@@ -656,10 +662,10 @@
   {
    "layerId": "materials-stock",
    "layerName": "Materials &amp; Stock",
-   "purpose": "Material-agnostic raw-stock data model, the cut/provenance chain, and the purchasable-SKU/price catalog for the framing pipeline. Owns WHAT a member is made of (Stock + its flyweight StockSpec), its parametric geometry (Dimensions), its pure section geometry (SectionProperties), the pieces and cuts that turn stock into real members (Piece, CutOperation, WasteRecord), self-weight that feeds the loads layer (Weight), the per-member fastener locations that feed the connection graph (ConnectionPoint), the material-blind takeoff measure the estimator rolls up (QuantityTakeoff), and the canonical purchasable-SKU + price-snapshot flyweights (SupplierSku, PriceQuote, PriceTier) the bottom-up estimate prices against. Carries NO mechanical design values and NO load/cost-MODEL computation \u2014 design values resolve through the DesignStandard seam; the load traversal and the estimate rollup are separate downstream concerns that CONSUME these types. This is the upstream data floor of the framing model; everything downstream references it, it references only the geometry-kernel and reference-library.",
+   "purpose": "Material-agnostic raw-stock data model, the cut/provenance chain, and the purchasable-SKU/price catalog for the framing pipeline. Owns WHAT a member is made of (Stock + its flyweight StockSpec), its parametric geometry (Dimensions), its pure section geometry (SectionProperties), the pieces and cuts that turn stock into real members (Piece, Cut, WasteRecord), self-weight that feeds the loads layer (Weight), the per-member fastener locations that feed the connection graph (ConnectionPoint), the material-blind takeoff measure the estimator rolls up (QuantityTakeoff), and the canonical purchasable-SKU + price-snapshot flyweights (SupplierSku, PriceQuote, PriceTier) the bottom-up estimate prices against. Carries NO mechanical design values and NO load/cost-MODEL computation \u2014 design values resolve through the DesignStandard seam; the load traversal and the estimate rollup are separate downstream concerns that CONSUME these types. This is the upstream data floor of the framing model; everything downstream references it, it references only the geometry-kernel and reference-library.",
    "pipelineStage": "framing model",
-   "baseUnitCompliance": "This layer is the canonical tick-invariant reference implementation (registry baseUnitAudit verdict: COMPLIANT/exemplary), held to that standard verbatim. LINEAR geometry is integer ticks @ 1/32in: Dimensions.length/actualWidth/actualThickness, Piece.length, CutOperation.position/kerf, ConnectionPoint.position, StockSpec.allowableLengths, SupplierSku.stockLength, WasteRecord.kerfLength/offcutLength. DERIVED reals: Dimensions.crossSectionArea (in\u00b2, explicitly NOT tick\u00b2), Dimensions.volume (in\u00b3), all SectionProperties (A in\u00b2, S in\u00b3, I in\u2074 \u2014 single-sources the fix for solver.Face.area:ticks\u00b2, S2-D), all of Weight (lb/ft\u00b3, lb/ft, lb), all of QuantityTakeoff (lf/bf/ft\u00b2/ft\u00b3/ea \u2014 aggregate measures, never ticks\u00b2), and all money on PriceQuote/PriceTier (float USD \u2014 the one money representation, fixing solver's int-cents drift, S3-C). TickVec3 (vec3<int>, ticks) is used for ConnectionPoint.position (a committed world position); UnitVec3 (vec3, unitless) for ConnectionPoint.normal (a direction) \u2014 kept distinct, never conflated (S3-B). CutOperation.angle is deg (an angle, legitimately real). No area is ever typed ticks\u00b2 anywhere in this layer.",
-   "extensibilityNotes": "New material types (cold-formed steel, concrete, masonry, hot-rolled steel) are added with ZERO edits to the core types here. Seams: (1) Stock.material + Stock.stockForm discriminators (MaterialClass + StockForm value types) route material identity and output path (linear\u2192cut optimizer, sheet\u2192nest, cast\u2192formwork/volume, unit\u2192count) without any per-material field on Stock; (2) StockSpec carries NO mechanical/design values \u2014 only an opaque designValueRef key the DesignStandard Strategy resolves to DesignValues per material; so a steel, concrete, and wood StockSpec are the SAME type with different discriminator+key values, and the leaf behind the seam (NDS_Wood / AISI_CFS / ACI_Concrete) owns the physics; (3) SectionProperties is public-domain geometry identical across materials (basis=gross here; effective/cracked/transformed computed by the strategy), so it needs no extension; new profiles extend via Dimensions.crossSectionShape and SectionProperties.axis, not new types. For ESTIMATING (forward-req 2): Piece carries a QuantityTakeoff (lf/bf/area/volume/count by stockForm) and CutOperation emits a WasteRecord \u2014 both material-blind measures the bottom-up estimator rolls up against the in-layer SupplierSku/PriceQuote/PriceTier catalog. Adding a new supplier or a new cost model means adding SupplierSku/PriceQuote rows (catalog data, flyweight lookup), never editing a type \u2014 the same open-for-extension property the material seam gives the physics side. PriceTier (break pricing) lets bulk/volume cost models plug in without a schema change.",
+   "baseUnitCompliance": "This layer is the canonical tick-invariant reference implementation (registry baseUnitAudit verdict: COMPLIANT/exemplary), held to that standard verbatim. LINEAR geometry is integer ticks @ 1/32in: Dimensions.length/actualWidth/actualThickness, Piece.length, Cut.position/kerf, ConnectionPoint.position, StockSpec.allowableLengths, SupplierSku.stockLength, WasteRecord.kerfLength/offcutLength. DERIVED reals: Dimensions.crossSectionArea (in\u00b2, explicitly NOT tick\u00b2), Dimensions.volume (in\u00b3), all SectionProperties (A in\u00b2, S in\u00b3, I in\u2074 \u2014 single-sources the fix for solver.Face.area:ticks\u00b2, S2-D), all of Weight (lb/ft\u00b3, lb/ft, lb), all of QuantityTakeoff (lf/bf/ft\u00b2/ft\u00b3/ea \u2014 aggregate measures, never ticks\u00b2), and all money on PriceQuote/PriceTier (float USD \u2014 the one money representation, fixing solver's int-cents drift, S3-C). TickVec3 (vec3<int>, ticks) is used for ConnectionPoint.position (a committed world position); UnitVec3 (vec3, unitless) for ConnectionPoint.normal (a direction) \u2014 kept distinct, never conflated (S3-B). Cut.angle is deg (an angle, legitimately real). No area is ever typed ticks\u00b2 anywhere in this layer.",
+   "extensibilityNotes": "New material types (cold-formed steel, concrete, masonry, hot-rolled steel) are added with ZERO edits to the core types here. Seams: (1) Stock.material + Stock.stockForm discriminators (MaterialClass + StockForm value types) route material identity and output path (linear\u2192cut optimizer, sheet\u2192nest, cast\u2192formwork/volume, unit\u2192count) without any per-material field on Stock; (2) StockSpec carries NO mechanical/design values \u2014 only an opaque designValueRef key the DesignStandard Strategy resolves to DesignValues per material; so a steel, concrete, and wood StockSpec are the SAME type with different discriminator+key values, and the leaf behind the seam (NDS_Wood / AISI_CFS / ACI_Concrete) owns the physics; (3) SectionProperties is public-domain geometry identical across materials (basis=gross here; effective/cracked/transformed computed by the strategy), so it needs no extension; new profiles extend via Dimensions.crossSectionShape and SectionProperties.axis, not new types. For ESTIMATING (forward-req 2): Piece carries a QuantityTakeoff (lf/bf/area/volume/count by stockForm) and Cut emits a WasteRecord \u2014 both material-blind measures the bottom-up estimator rolls up against the in-layer SupplierSku/PriceQuote/PriceTier catalog. Adding a new supplier or a new cost model means adding SupplierSku/PriceQuote rows (catalog data, flyweight lookup), never editing a type \u2014 the same open-for-extension property the material seam gives the physics side. PriceTier (break pricing) lets bulk/volume cost models plug in without a schema change.",
    "resolvesFindings": [
     "S2-C",
     "S1-A",
@@ -971,7 +977,7 @@
        "name": "cutIds",
        "type": "UUID[]",
        "req": true,
-       "note": "Ordered CutOperation ids that produced this piece."
+       "note": "Ordered Cut ids that produced this piece."
       },
       {
        "name": "role",
@@ -1042,9 +1048,9 @@
      "notes": "New type (forward-req 2). Gives the estimator a single material-blind quantity contract so a new cost model never edits Piece/Stock. Real units (no ticks\u00b2) honors the base-unit invariant for aggregates. Dropped the separate 'unit' enum from the draft \u2014 it duplicated basis; the unit of measure is determined by basis (lf/bf/ft\u00b2/ft\u00b3/ea), aligned to PriceQuote, with no second source to drift."
     },
     {
-     "id": "CutOperation",
+     "id": "Cut",
      "stereotype": "entity",
-     "desc": "Divides a member along a plane at an angle, consuming kerf. Records its inputs so every resulting Piece is traceable, and emits a WasteRecord so kerf + offcut feed the estimating waste totals. Consumes the shared Plane geometry-kernel primitive (cut plane \u2261 sketch plane \u2261 face plane).",
+     "desc": "An immutable recorded cut event: a member divided along a Plane at an angle, consuming kerf, producing traceable Pieces. Identity (id) is the provenance handle that Piece.cutIds points at. The ACT of cutting lives in CuttingStockSolver (\u00abservice\u00bb); this is the durable RECORD of one cut, not the process. Renamed from Cut to remove the verb/record ambiguity.",
      "fields": [
       {
        "name": "id",
@@ -1099,12 +1105,12 @@
       "materials-stock.WasteRecord (emits)",
       "solver.CutAssignment (cut-tree provenance)"
      ],
-     "notes": "Carried over; plane retargeted to geometry-kernel (S1-D, S3-A). Added WasteRecord so the bottom-up takeoff captures cut waste (forward-req 2). design-standard refers to this as 'Cut' \u2014 single-sourced here. [re-stereotyped \u00abentity\u00bb \u2014 coherence DDD pass]"
+     "notes": "Carried over; plane retargeted to geometry-kernel (S1-D, S3-A). Added WasteRecord so the bottom-up takeoff captures cut waste (forward-req 2). design-standard refers to this as 'Cut' \u2014 single-sourced here. [re-stereotyped \u00abentity\u00bb \u2014 coherence DDD pass] [v1.0.1: renamed Cut\u2192Cut; \u00abentity\u00bb as an immutable domain event. Thread to revisit: CutAssignment already records stock\u2192cuts\u2192remainder, so Cut and CutAssignment may overlap \u2014 reconcile when the cut layer is next touched.]"
     },
     {
      "id": "WasteRecord",
      "stereotype": "value",
-     "desc": "The kerf and offcut produced by one CutOperation, as a material-blind quantity the estimator nets into the bottom-up takeoff. Distinguishes recoverable offcut (reusable from the OffcutPool) from true waste (kerf).",
+     "desc": "The kerf and offcut produced by one Cut, as a material-blind quantity the estimator nets into the bottom-up takeoff. Distinguishes recoverable offcut (reusable from the OffcutPool) from true waste (kerf).",
      "fields": [
       {
        "name": "kerfLength",
@@ -1360,7 +1366,7 @@
        "name": "cutChain",
        "type": "UUID[]",
        "req": true,
-       "note": "Ordered CutOperation ids from stock to this piece."
+       "note": "Ordered Cut ids from stock to this piece."
       },
       {
        "name": "siblingPieceIds",
@@ -2856,10 +2862,9 @@
       },
       {
        "name": "spacing",
-       "type": "int",
-       "unit": "ticks",
+       "type": "SpacingModule",
        "req": true,
-       "note": "On-center module as an INTEGER tick count (16in=512t, 24in=768t). Stored as ticks not bare inches to keep the base-unit invariant uniform (S3-B); original solver field was '16|24 (in OC)'. Feeds Cr repetitive-member context downstream (S1-B). Fractional-inch modules (19.2in) must be stored as their exact agreed tick value, never as a float inch. [money = real decimal USD, single-sourced via PriceQuote \u2014 no cents]"
+       "note": "On-center layout module as a SpacingModule (parameter, NOT ticks). FramingSolver derives integer-tick member positions from it. 19.2in OC is the case proving this is not a tick value."
       },
       {
        "name": "openings",
@@ -3200,10 +3205,9 @@
       },
       {
        "name": "spacing",
-       "type": "int",
-       "unit": "ticks",
+       "type": "SpacingModule",
        "req": false,
-       "note": "Joist OC module as an INTEGER tick count (12in=384t, 16in=512t, 24in=768t). Feeds Cr context. 19.2in OC must be stored as its exact agreed tick value, never as the float 19.2in (=614.4t is not an integer tick). Stub field."
+       "note": "On-center layout module as a SpacingModule (parameter, NOT ticks). FramingSolver derives integer-tick member positions from it. 19.2in OC is the case proving this is not a tick value."
       }
      ],
      "crossRefs": [
@@ -3236,10 +3240,9 @@
       },
       {
        "name": "spacing",
-       "type": "int",
-       "unit": "ticks",
+       "type": "SpacingModule",
        "req": false,
-       "note": "Rafter/truss OC module as an INTEGER tick count (16in=512t, 24in=768t). Feeds Cr context. Stub field."
+       "note": "On-center layout module as a SpacingModule (parameter, NOT ticks). FramingSolver derives integer-tick member positions from it. 19.2in OC is the case proving this is not a tick value."
       }
      ],
      "crossRefs": [
@@ -3285,6 +3288,33 @@
       "building-placement.BracingRef"
      ],
      "notes": "Stub only. PROMOTED FROM value TO entity (fix vs draft): like Floor/Roof it owns identity, is referenced by BracingRef.bracedBy=sheathing, and emits MemberPlacement[] of role=panel through FramingSolver (assemblyKind=sheathing) \u2014 a thing that the solver consumes and that is referenced by other types is an entity, not an immutable VO. Added id and the FramingSolver crossRef to make the emit path explicit. Closes the loop between the skin and the Cp/CL bracing context without restructuring the placement layer; panelSpecRef keeps sheet goods on the same material-agnostic flyweight + cost-takeoff path."
+    },
+    {
+     "id": "SpacingModule",
+     "stereotype": "value",
+     "desc": "On-center layout INTENT \u2014 a parameter, not stored geometry. 19.2in OC = 8ft/5 (five bays per sheet) = 614.4 ticks is not an integer tick, which is exactly why OC spacing must not be typed as ticks. FramingSolver derives actual member positions as integer-tick TickVec3, absorbing the sub-tick remainder into the layout (last-bay or distributed rounding). Geometry stays integer ticks; the module that generates it is real.",
+     "fields": [
+      {
+       "name": "module",
+       "type": "SpacingKey",
+       "req": true,
+       "note": "Open key: 12 | 16 | 19.2 | 24 | custom. Open, not a closed enum, so non-standard modules are data."
+      },
+      {
+       "name": "exactInches",
+       "type": "f64",
+       "unit": "in",
+       "req": true,
+       "note": "Precise inch value (19.2 for fifths-of-8ft). The source of truth the solver rounds from."
+      },
+      {
+       "name": "anchor",
+       "type": "enum",
+       "note": "wallStart | gridline | sheetEdge \u2014 how the run is anchored before rounding (drives layout stability: anchor the grid, don't redraw it)."
+      }
+     ],
+     "canonicalHome": "building-placement",
+     "notes": "Resolves base-unit S3: spacing reclassified from linear geometry (ticks) to a layout parameter (real). Stud/joist/rafter positions remain derived integer-tick TickVec3."
     }
    ]
   },
@@ -4633,7 +4663,7 @@
     },
     {
      "id": "NDS_Wood",
-     "stereotype": "reference",
+     "stereotype": "service",
      "desc": "The wood leaf \u2014 the reference implementation, FULLY POPULATED. Implements DesignStandard for material=wood, code=NDS, philosophy=ASD. SUBSUMES solver.{NDSDesignValues, AdjustmentFactors} (resolves S1-C) and single-sources its design values by REFERENCING materials.MechanicalProperties rather than restating them (resolves S1-A \u2014 the third copy is eliminated). A shared flyweight: one NDS catalog looked up by spec key, never copied per member.",
      "fields": [
       {
@@ -4697,7 +4727,7 @@
        "note": "linear (dimensional lumber, \u2192 cut list + offcut pool) + sheet (WSP/plywood, \u2192 nest). One of the four routing values linear|sheet|cast|unit."
       }
      ],
-     "notes": "Already built \u2014 this is what the sizing-engine layer implements. The key move: designValuesRef points at the ONE canonical MechanicalProperties flyweight in materials, so correcting a species table corrects it everywhere (resolves S1-A drift). solver.NDSDesignValues + AdjustmentFactors collapse into this leaf behind the seam (S1-C).",
+     "notes": "Already built \u2014 this is what the sizing-engine layer implements. The key move: designValuesRef points at the ONE canonical MechanicalProperties flyweight in materials, so correcting a species table corrects it everywhere (resolves S1-A drift). solver.NDSDesignValues + AdjustmentFactors collapse into this leaf behind the seam (S1-C). [v1.0.1: \u00abservice\u00bb \u2014 a Strategy implementation of the \u00abinterface\u00bb DesignStandard. It encodes BEHAVIOR (limit-state algorithms: EYM yield, effective-width, cracked-section, web crippling) that genuinely differs by material and would otherwise leak into SizingArbiter as material conditionals. The design values + factor tables it serves stay \u00abreference\u00bb flyweights it holds (reference-flyweights.MechanicalProperties + factor catalogs). \u00abinterface\u00bb is reserved for DesignStandard alone.",
      "crossRefs": [
       "designStandard.DesignStandard (implements)",
       "materials.MechanicalProperties (designValues, by ref \u2014 S1-A)",
@@ -4709,7 +4739,7 @@
     },
     {
      "id": "AISI_CFS",
-     "stereotype": "reference",
+     "stereotype": "service",
      "desc": "Cold-formed steel leaf \u2014 the cheapest next material, same wall topology as wood. Stubbed but structurally complete: every DesignStandard method present and typed, only the AISI S100 tables unpopulated. Adding it requires zero core edits \u2014 the proof of requirement #1.",
      "fields": [
       {
@@ -4773,7 +4803,7 @@
        "note": "linear \u2192 cut list + offcut pool (track/stud/header port from wood with terminology swaps)."
       }
      ],
-     "notes": "Track/stud/header, king/jack, braced walls all port from wood with terminology swaps. The hybrid case (wood walls + steel beams + concrete footing) is the real end state \u2014 the argument for the seam. Stub = tables empty, structure complete.",
+     "notes": "Track/stud/header, king/jack, braced walls all port from wood with terminology swaps. The hybrid case (wood walls + steel beams + concrete footing) is the real end state \u2014 the argument for the seam. Stub = tables empty, structure complete. [v1.0.1: \u00abservice\u00bb \u2014 a Strategy implementation of the \u00abinterface\u00bb DesignStandard. It encodes BEHAVIOR (limit-state algorithms: EYM yield, effective-width, cracked-section, web crippling) that genuinely differs by material and would otherwise leak into SizingArbiter as material conditionals. The design values + factor tables it serves stay \u00abreference\u00bb flyweights it holds (reference-flyweights.MechanicalProperties + factor catalogs). \u00abinterface\u00bb is reserved for DesignStandard alone.",
      "crossRefs": [
       "designStandard.DesignStandard (implements)",
       "designStandard.SectionBasis (effective)"
@@ -4781,7 +4811,7 @@
     },
     {
      "id": "ACI_Concrete",
-     "stereotype": "reference",
+     "stereotype": "service",
      "desc": "Concrete leaf \u2014 included to prove the seam HOLDS where assumptions break (cast, not cut; transformed/cracked section). Stubbed but structurally complete. Demonstrates the stockForm routing: concrete bypasses the linear cut optimizer entirely without the core knowing about concrete (gotcha #3).",
      "fields": [
       {
@@ -4845,7 +4875,7 @@
        "note": "cast \u2192 formwork + volume, NOT a cut list. Routes to a formwork/volume output, bypassing the linear cut optimizer + offcut pool (gotcha #3). One of the four routing values linear|sheet|cast|unit."
       }
      ],
-     "notes": "The hardest leaf \u2014 proves the seam survives a material whose section is non-gross, whose output is volumetric, and whose optimizer path is entirely different. The core never branches on 'concrete'; stockForm=cast does the routing. Stub = tables empty, structure complete.",
+     "notes": "The hardest leaf \u2014 proves the seam survives a material whose section is non-gross, whose output is volumetric, and whose optimizer path is entirely different. The core never branches on 'concrete'; stockForm=cast does the routing. Stub = tables empty, structure complete. [v1.0.1: \u00abservice\u00bb \u2014 a Strategy implementation of the \u00abinterface\u00bb DesignStandard. It encodes BEHAVIOR (limit-state algorithms: EYM yield, effective-width, cracked-section, web crippling) that genuinely differs by material and would otherwise leak into SizingArbiter as material conditionals. The design values + factor tables it serves stay \u00abreference\u00bb flyweights it holds (reference-flyweights.MechanicalProperties + factor catalogs). \u00abinterface\u00bb is reserved for DesignStandard alone.",
      "crossRefs": [
       "designStandard.DesignStandard (implements)",
       "designStandard.SectionBasis (transformed/cracked)",
@@ -4854,7 +4884,7 @@
     },
     {
      "id": "AISC_Steel",
-     "stereotype": "reference",
+     "stereotype": "service",
      "desc": "Hot-rolled structural steel leaf (wide-flange beams, HSS columns). Stubbed but structurally complete. The natural partner to CFS in the hybrid end state (steel beams spanning wood/CFS walls). Listed in the interface's implementations enum; included so the leaf set matches the user's forward material list.",
      "fields": [
       {
@@ -4918,7 +4948,7 @@
        "note": "linear \u2192 cut list + offcut pool (mill lengths, cut to span)."
       }
      ],
-     "notes": "Stub. Structurally identical interface surface to the others \u2014 the only material-specific complication is plastic-section design (Zx, handled by SectionProperties.Z) and a richer LTB/compactness check set, both via limitStatesExtra + sectionBasis without touching the core.",
+     "notes": "Stub. Structurally identical interface surface to the others \u2014 the only material-specific complication is plastic-section design (Zx, handled by SectionProperties.Z) and a richer LTB/compactness check set, both via limitStatesExtra + sectionBasis without touching the core. [v1.0.1: \u00abservice\u00bb \u2014 a Strategy implementation of the \u00abinterface\u00bb DesignStandard. It encodes BEHAVIOR (limit-state algorithms: EYM yield, effective-width, cracked-section, web crippling) that genuinely differs by material and would otherwise leak into SizingArbiter as material conditionals. The design values + factor tables it serves stay \u00abreference\u00bb flyweights it holds (reference-flyweights.MechanicalProperties + factor catalogs). \u00abinterface\u00bb is reserved for DesignStandard alone.",
      "crossRefs": [
       "designStandard.DesignStandard (implements)",
       "designStandard.SectionBasis (gross/plastic)",
@@ -4927,7 +4957,7 @@
     },
     {
      "id": "TMS_Masonry",
-     "stereotype": "reference",
+     "stereotype": "service",
      "desc": "Masonry leaf (CMU/brick, reinforced and unreinforced). Stubbed but structurally complete. The fifth material in the user's forward list; included so the implementations enum and the leaf set are exhaustive. Like concrete, it departs from linear-cut assumptions (unit-based laying), proving the stockForm routing generalizes to the fourth value (unit).",
      "fields": [
       {
@@ -4991,7 +5021,7 @@
        "note": "unit \u2192 unit count + grout/mortar volume (block + mortar + grout takeoff), NOT a cut list. The fourth routing value (linear|sheet|cast|unit), confirming routing is by stockForm not material."
       }
      ],
-     "notes": "Stub. stockForm=unit is the fourth output path (alongside linear/sheet/cast) \u2014 confirms the routing enum, not material branching in the core, is what generalizes. Demonstrates the seam scales to a material that is neither cut nor cast but laid. (Corrected from the draft: reinforced is a spec/basis discriminator, not a 'reinforcedFlag' factor.)",
+     "notes": "Stub. stockForm=unit is the fourth output path (alongside linear/sheet/cast) \u2014 confirms the routing enum, not material branching in the core, is what generalizes. Demonstrates the seam scales to a material that is neither cut nor cast but laid. (Corrected from the draft: reinforced is a spec/basis discriminator, not a 'reinforcedFlag' factor.) [v1.0.1: \u00abservice\u00bb \u2014 a Strategy implementation of the \u00abinterface\u00bb DesignStandard. It encodes BEHAVIOR (limit-state algorithms: EYM yield, effective-width, cracked-section, web crippling) that genuinely differs by material and would otherwise leak into SizingArbiter as material conditionals. The design values + factor tables it serves stay \u00abreference\u00bb flyweights it holds (reference-flyweights.MechanicalProperties + factor catalogs). \u00abinterface\u00bb is reserved for DesignStandard alone.",
      "crossRefs": [
       "designStandard.DesignStandard (implements)",
       "designStandard.SectionBasis (net/transformed)",
@@ -6028,15 +6058,21 @@
       {
        "name": "sequence",
        "type": "int",
-       "note": "Application order (markup-on-markup is order-dependent: OH before profit before bond)."
+       "note": "Application order within a node. Combined with appliesToBase below, makes markup-on-markup fully deterministic and auditable (OH\u2192profit\u2192bond\u2192tax)."
+      },
+      {
+       "name": "appliesToBase",
+       "type": "enum",
+       "req": true,
+       "note": "directCost | directCostPlusAllowances | runningSubtotal (compound on prior markups) | materialCostOnly | custom. Each markup declares its OWN base \u2014 order is data, not baked into the schema. Tax = a Markup{kind:tax, appliesToBase: materialCostOnly|directCost} so the tax base is configurable per jurisdiction (material-only in some states, full-contract in others), consistent with how the schema parameterizes jurisdiction everywhere else."
       }
      ],
-     "notes": "Order + scope make the markup stack auditable rather than a single fudge %. Computed into RollupNode.markupTotal, never folded silently into unit costs."
+     "notes": "Order + scope make the markup stack auditable rather than a single fudge %. Computed into RollupNode.markupTotal, never folded silently into unit costs. [v1.0.1: allowances are NOT markups \u2014 see Allowance; tax is a Markup with a jurisdiction-configurable appliesToBase.]"
     },
     {
      "id": "Allowance",
      "stereotype": "value",
-     "desc": "A carried budget placeholder for scope not yet modeled/quantified (e.g. 'hardware allowance', 'finish allowance'), plus design/estimating contingency expressed as a lump or %. Distinct from Markup: an Allowance is scope-budget (drawn down as real lines arrive); Markup is a multiplier on existing cost.",
+     "desc": "A carried budget placeholder for scope not yet modeled/quantified (hardware, finish, unmodeled blocking) plus design/estimating contingency. An allowance is a DIRECT COST, not a markup: its drawn amount rolls into directCostSubtotal and is markup-eligible like any direct cost. Undrawn remainder is carried until scope is modeled and converted to real lines.",
      "fields": [
       {
        "name": "id",
@@ -6084,7 +6120,7 @@
        "note": "Running amount converted to real lines as scope is modeled; remaining = amount \u2212 drawnDown. Tracks allowance burn."
       }
      ],
-     "notes": "drawnDown makes allowances live: as the connection graph gets fully modeled, hardware TakeoffItems (sourceKind=connection, stockForm=unit) convert allowance into MaterialLines and the allowance shrinks \u2014 visible, not hidden."
+     "notes": "drawnDown makes allowances live: as the connection graph gets fully modeled, hardware TakeoffItems (sourceKind=connection, stockForm=unit) convert allowance into MaterialLines and the allowance shrinks \u2014 visible, not hidden. [v1.0.1: reclassified as direct cost \u2014 drawn allowance enters the markup base; it is never a sibling of Markup.]"
     },
     {
      "id": "RollupNode",
@@ -6107,19 +6143,19 @@
        "type": "real",
        "req": true,
        "unit": "$",
-       "note": "\u03a3 extended costs (MaterialLine + ResourceLine + AssemblyCost expansions) before markup/allowance. Real USD."
+       "note": "\u03a3 extended costs (MaterialLine + ResourceLine + AssemblyCost expansion) PLUS drawn Allowance amounts at this node. Allowances are direct cost, so they sit in the markup base."
       },
       {
        "name": "markupTotal",
        "type": "real",
        "unit": "$",
-       "note": "\u03a3 applied Markup in sequence order at this node."
+       "note": "\u03a3 applied Markup, each computed against its own Markup.appliesToBase (directCost / +allowances / compounding running subtotal / materialCostOnly), in sequence order. Deterministic."
       },
       {
        "name": "allowanceTotal",
        "type": "real",
        "unit": "$",
-       "note": "\u03a3 remaining Allowance amounts at this node."
+       "note": "\u03a3 UNDRAWN (remaining) Allowance carried at this node. Drawn allowance is already inside directCostSubtotal \u2014 not double-counted here."
       },
       {
        "name": "wasteCost",
@@ -6138,7 +6174,7 @@
        "type": "real",
        "req": true,
        "unit": "$",
-       "note": "directCostSubtotal + markupTotal + allowanceTotal at this node. Real USD."
+       "note": "directCostSubtotal (incl. drawn allowance) + markupTotal + undrawn allowanceTotal. Real USD."
       }
      ],
      "crossRefs": [
@@ -7943,15 +7979,13 @@
   "Opened 6 closed material-discriminator enums to registry keys (MaterialFamilyKey, ProfileKey, QuantityBasisKey, ConnectionMethodKey, UomKey) \u2014 adding a material is a leaf+row, never a core edit (S1 material-extensibility).",
   "Removed SectionProperties.basis enum from geometry \u2014 section basis is a strategy decision behind the seam.",
   "Enforced money invariant: 21 cents-typed fields \u2192 real decimal USD via PriceQuote (S1 base-unit money conflict).",
-  "Re-stereotyped MechanicalProperties\u2192\u00abreference\u00bb, CutOperation\u2192\u00abentity\u00bb, Seam\u2192\u00abentity\u00bb, CostBenchmark\u2192\u00abservice\u00bb; \u00abinterface\u00bb reserved for DesignStandard (S2/S3 DDD).",
+  "Re-stereotyped MechanicalProperties\u2192\u00abreference\u00bb, Cut\u2192\u00abentity\u00bb, Seam\u2192\u00abentity\u00bb, CostBenchmark\u2192\u00abservice\u00bb; \u00abinterface\u00bb reserved for DesignStandard (S2/S3 DDD).",
   "Normalized solver.*/architecture.*/drawing.*/designStandard.* crossRef namespace drift to delivered layerIds; renamed stale tokens (LumberStock\u2192Stock, NDSDesignValues\u2192MechanicalProperties, TakeoffLine\u2192TakeoffItem, ProjectEstimate\u2192Estimate, ConnectionEdge\u2192Connection) (S2 label-drift).",
   "Added estimating.PayItem + SubcontractLine (estimating completeness); CostLine = MaterialLine|ResourceLine|SubcontractLine.",
-  "Added project-context layer (Project/SiteCriteria) to produce the site inputs loads/estimating consume; added drawings-export terminal layer (S1 missing-stage)."
+  "Added project-context layer (Project/SiteCriteria) to produce the site inputs loads/estimating consume; added drawings-export terminal layer (S1 missing-stage).",
+  "v1.0.1: resolved the four deferred modeling calls \u2014 markup/allowance base semantics + configurable tax base; spacing-as-parameter (SpacingModule); material leaves as \u00abservice\u00bb strategies; CutOperation\u2192Cut immutable event."
  ],
  "openQuestions": [
-  "Markup vs allowance compounding order and tax base \u2014 application sequence stated but not fully formalized (estimating S3).",
-  "19.2in OC = 614.4 ticks is not integer \u2014 store rounding policy (614/615) or a moduleRef; currently noted, not enforced (base-unit S3).",
-  "Material leaves as data \u00abreference\u00bb vs behavior (Strategy implementers) \u2014 legend treats them as catalogs; revisit if methods need first-class modeling.",
-  "CutOperation as recorded event vs process \u2014 re-stereotyped \u00abentity\u00bb (id-bearing, persisted); a pure-process variant may still be wanted."
+  "Cut vs CutAssignment overlap \u2014 both record cut provenance; reconcile when the cut layer is next revised (flagged on Cut)."
  ]
 }
