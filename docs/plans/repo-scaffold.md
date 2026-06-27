@@ -38,26 +38,30 @@ Three guiding principles fall out of this:
 
 ---
 
-## 2. Monorepo tooling (recommended)
+## 2. Monorepo tooling (decided)
 
-A polyglot Rust + TypeScript monorepo. Recommended baseline — mainstream, lightweight,
-no exotic build system:
+A polyglot Rust + TypeScript monorepo. The stack is **Bun + Cargo + Turborepo**:
 
+- **Bun workspaces** — the package manager, JS/TS runtime, and test runner. One
+  `bun install`, one `bun.lock`, `bun test`. Workspaces are declared in the root
+  `package.json` (`"workspaces": ["apps/*", "packages/*"]`); Bun globs them.
 - **Cargo workspace** (`Cargo.toml` at root) — manages all Rust crates, one lockfile,
-  shared profiles.
-- **pnpm workspaces** (`pnpm-workspace.yaml`) — manages all JS/TS packages, one lockfile,
-  strict dependency isolation.
+  shared profiles. Bun does not touch Rust; `cargo` stays the Rust toolchain.
 - **Turborepo** (`turbo.json`) — task orchestration + caching across both worlds
   (`build`, `test`, `lint`, `codegen`, `typecheck`). Turbo shells out to `cargo` for Rust
-  tasks, so a single `turbo run build` builds the whole repo.
-- **`rust-toolchain.toml`** + **`.nvmrc`/`.node-version`** — pin toolchains so every
-  checkout and CI runner is identical.
+  tasks and to `bun` for TS tasks, so a single `bunx turbo run build` builds the whole
+  repo, with `codegen` wired in as a graph dependency.
+- **`rust-toolchain.toml`** + a pinned Bun version (`packageManager` / `.bun-version`) —
+  so every checkout and CI runner is identical.
 
-> **Alternatives considered.** `moonrepo` or `Bazel` give first-class polyglot graphs but
-> add significant setup and cognitive cost; not worth it at this stage. `Nx` is excellent
-> for JS-heavy repos but Rust is a second-class citizen. Cargo + pnpm + Turbo is the
+> **On Turbo:** Bun's built-in `bun run --filter` can fan tasks across workspaces, so the
+> repo *can* start without Turbo and add it once the build graph grows. Turbo is kept in
+> the plan for cross-language caching and the Rust→codegen→TS dependency graph, which
+> Bun's filter alone doesn't model.
+>
+> **Alternatives considered.** `moonrepo`/`Bazel` give first-class polyglot graphs but add
+> significant setup and cognitive cost; not worth it here. Bun + Cargo + Turbo is the
 > lowest-ceremony path that still gives cached, incremental, cross-language builds.
-> *(This is a confirmable decision — see §9.)*
 
 ---
 
@@ -69,9 +73,9 @@ jose/
 ├─ CONTRIBUTING.md            # how to add a context, naming rules, where files go
 ├─ Cargo.toml                 # Rust workspace root (members = crates/*)
 ├─ rust-toolchain.toml
-├─ pnpm-workspace.yaml        # JS workspace root (packages/*, apps/*)
-├─ package.json               # root dev tooling only
-├─ turbo.json                 # cross-language task pipeline
+├─ package.json               # Bun workspace root ("workspaces": apps/*, packages/*) + root dev tooling
+├─ bun.lock                   # single JS/TS lockfile
+├─ turbo.json                 # cross-language task pipeline (bunx turbo)
 ├─ .github/
 │  ├─ workflows/              # CI: lint, test, codegen-drift check, build
 │  └─ CODEOWNERS              # per-context ownership
@@ -104,7 +108,7 @@ jose/
 │
 ├─ apps/
 │  ├─ web/                    # the browser app: main thread + worker bootstrap + canvas
-│  └─ api/                    # backend: persistence boundary (Neon/Drizzle, R2 blobs)
+│  └─ api/                    # backend (Bun runtime): persistence boundary (Neon/Drizzle, R2 blobs)
 │
 ├─ tooling/
 │  ├─ codegen/                # ⭐ MODEL → Rust structs + TS types + BufferLayout keystone
@@ -266,18 +270,15 @@ rather than a reference document.
 
 ---
 
-## 9. Decisions to confirm
+## 9. Decisions (resolved)
 
-These are the forks where I picked a sensible default but your call may differ:
-
-1. **Monorepo tool** — recommended **Cargo + pnpm + Turborepo** (§2). Alternative:
-   moonrepo/Bazel if you want a single first-class polyglot graph.
-2. **Backend in this repo?** — plan assumes **yes**, `apps/api` lives here (Neon/Drizzle,
-   Cloudflare R2 are already named in the architecture layer). Could be split to its own
-   repo if you prefer a pure engine+frontend monorepo.
-3. **`crates/` vs `packages/` naming** — used the Rust-idiomatic `crates/` for the engine
-   and `packages/` for TS. Some teams prefer a unified `packages/` for everything; the
-   split is clearer for a polyglot repo.
+1. **Monorepo tool** — **Bun + Cargo + Turborepo** (§2). Bun is package manager, runtime,
+   and test runner for TS; Cargo for Rust; Turbo for cross-language caching/task graph.
+2. **Backend in this repo** — **yes**, `apps/api` lives here on the Bun runtime
+   (Neon/Drizzle + Cloudflare R2). Hono keeps Bun/Workers deploy targets open.
+3. **Top-level split** — **split layout**: `crates/` (Rust engine), `packages/` (shared
+   TS), `apps/` (deployables). Clearer than a unified `packages/` for a polyglot repo and
+   idiomatic to each toolchain (Cargo crates; Bun globs `packages/*`).
 
 ---
 
