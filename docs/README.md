@@ -6,7 +6,8 @@ Design documentation for the parametric residential framing engine. Organized by
 docs/
 ├── schema/      current deliverable — the unified domain model
 ├── analysis/    the cross-schema audit that produced it
-└── reference/   still-active bibliography (referenced, not duplicated)
+├── reference/   still-active bibliography (referenced, not duplicated)
+└── plans/       forward-looking plans (repo scaffold, rollout)
 ```
 
 ## schema/ — current
@@ -30,6 +31,12 @@ Consolidates the six prior artifacts; designed for two forward requirements — 
 | File | What it is |
 |---|---|
 | [`reference-library.html`](reference/reference-library.html) | 23 building-science titles + a `subjectIndex` mapping modeling subjects → `{book, anchor, note}`. The unified schema *references* this (via `CitationKey`); it was not absorbed, so it stays live. |
+
+## plans/ — forward-looking
+
+| File | What it is |
+|---|---|
+| [`repo-scaffold.md`](plans/repo-scaffold.md) | **Proposed** DDD monorepo scaffold: maps the 12 schema layers → bounded contexts, defines the Rust-engine / TS-frontend split, the MODEL→codegen spine, naming/boundary conventions, tidiness governance, and a phased rollout. Planning only — creates no code. |
 
 ## Provenance — the five superseded source artifacts
 
