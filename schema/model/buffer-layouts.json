@@ -1,0 +1,38 @@
+{
+  "schema": "parametric-bim-core",
+  "schemaVersion": "1.0.1",
+  "note": "SoA buffer layouts — the source rows for the generated BufferLayout keystone. Each buffer is a struct-of-arrays column store for ONE domain type, resident in the Rust worker's linear memory and mirrored read-only by JS. Columns are pure column-major: a column's data is `capacity` contiguous elements at `byteOffset`, so a typed-array view (Int32Array/Uint32Array/...) cuts over exactly one column with zero copy. Edit here; tooling/codegen emits the identical byte-offset table to Rust and TS so the writer and reader provably cannot drift.",
+  "alignment": 4,
+  "buffers": [
+    {
+      "domainType": "MemberPlacement",
+      "note": "The first end-to-end slice: one row per framing member emitted by the FramingSolver. Linear geometry is integer ticks (1/32in); coordinates are wall-local elevation (x along the baseline, z up) — composing the wall→world transform is a later pipeline stage. Each member is a segment (start→end) plus a draw width and an enumerated role.",
+      "capacity": 4096,
+      "columns": [
+        { "field": "x0", "elementType": "i32", "fieldClass": "linearTick", "note": "Start point X (along the wall baseline), ticks." },
+        { "field": "y0", "elementType": "i32", "fieldClass": "linearTick", "note": "Start point Y (through-wall depth), ticks; 0 in the elevation slice." },
+        { "field": "z0", "elementType": "i32", "fieldClass": "linearTick", "note": "Start point Z (up), ticks." },
+        { "field": "x1", "elementType": "i32", "fieldClass": "linearTick", "note": "End point X, ticks." },
+        { "field": "y1", "elementType": "i32", "fieldClass": "linearTick", "note": "End point Y, ticks." },
+        { "field": "z1", "elementType": "i32", "fieldClass": "linearTick", "note": "End point Z, ticks." },
+        { "field": "width", "elementType": "i32", "fieldClass": "linearTick", "note": "Section draw width (stroke thickness in elevation), ticks." },
+        { "field": "roleId", "elementType": "u32", "fieldClass": "id", "note": "Index into `roles` below — the member's framing role, for coloring and picking." }
+      ],
+      "roles": [
+        "plate",
+        "stud",
+        "king",
+        "jack",
+        "cripple",
+        "header",
+        "sill",
+        "post",
+        "block",
+        "joist",
+        "rafter",
+        "chord",
+        "panel"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>jose — parametric framing (Phase 4 slice)</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        background: #1b1b1f;
+        color: #e8e8ea;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+      }
+      header {
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid #333;
+      }
+      header h1 {
+        font-size: 1rem;
+        margin: 0;
+        font-weight: 600;
+      }
+      #status {
+        font-size: 0.85rem;
+        color: #9aa;
+        margin-top: 0.25rem;
+      }
+      #scene {
+        flex: 1;
+        width: 100%;
+        background: #232328;
+        touch-action: none;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Parametric framing — draw → recompute → render</h1>
+      <div id="status">Loading engine…</div>
+    </header>
+    <canvas id="scene" width="1200" height="700"></canvas>
+    <script type="module" src="./dist/main.js"></script>
+  </body>
+</html>

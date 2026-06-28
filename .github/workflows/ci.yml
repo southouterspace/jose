@@ -57,3 +57,9 @@ jobs:
         if: steps.crates.outputs.present == 'true'
       - run: cargo check --workspace
         if: steps.crates.outputs.present == 'true'
+      - run: cargo test --workspace
+        if: steps.crates.outputs.present == 'true'
+      # The wasm boundary (Phase 4+) must compile for its real target, not just the host.
+      - name: Build the wasm boundary for wasm32
+        run: cargo build -p bim-wasm --target wasm32-unknown-unknown
+        if: hashFiles('crates/bim-wasm/Cargo.toml') != ''
