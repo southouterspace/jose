@@ -22,3 +22,9 @@ all = "warn"
 [dependencies]
 bim-core = { path = "../bim-core" }
 wasm-bindgen = "0.2"
+
+# Disable wasm-opt (binaryen): the dev build does not download the binaryen release, and
+# the unoptimized module is fine for development. Re-enable for production size optimization
+# where binaryen is available.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
