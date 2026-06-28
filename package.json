@@ -1,0 +1,23 @@
+{
+  "name": "jose",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.3.11",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "tooling/*"
+  ],
+  "scripts": {
+    "codegen": "bun run tooling/codegen/src/index.ts",
+    "codegen:check": "bun run tooling/codegen/src/index.ts --check",
+    "build": "bun run codegen && turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "bun run codegen && turbo run typecheck"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0",
+    "typescript": "^5.7.0"
+  }
+}

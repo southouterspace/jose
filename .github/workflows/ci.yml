@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ts:
+    name: TypeScript + codegen spine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.11"
+      - run: bun install --frozen-lockfile
+      # The keystone gate: regenerating from schema/ must produce no diff.
+      - name: codegen drift check
+        run: bun run codegen:check
+      - name: typecheck
+        run: bun run typecheck
+
+  rust:
+    name: Rust workspace
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      # Phase 1 has no member crates yet; prove the workspace manifest parses.
+      - name: Validate workspace manifest
+        run: cargo metadata --no-deps --format-version 1 > /dev/null
+      - name: Detect member crates
+        id: crates
+        run: |
+          if ls crates/*/Cargo.toml >/dev/null 2>&1; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+      # Full checks activate automatically once the first crate lands (Phase 2+).
+      - run: cargo fmt --all --check
+        if: steps.crates.outputs.present == 'true'
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+        if: steps.crates.outputs.present == 'true'
+      - run: cargo check --workspace
+        if: steps.crates.outputs.present == 'true'

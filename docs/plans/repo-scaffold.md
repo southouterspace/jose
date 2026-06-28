@@ -252,9 +252,10 @@ Keep the tree skimmable by making placement obvious:
 
 The repo is docs-only today; the scaffold lands incrementally so `main` is always green.
 
-1. **Skeleton + spine.** Workspace roots (`Cargo.toml`, `pnpm-workspace.yaml`, `turbo.json`),
-   `schema/` promoted from `docs/schema/`, `tooling/codegen/` emitting types from the MODEL,
-   and the `codegen --check` CI gate. *Nothing domain yet — just the rails.*
+1. **Skeleton + spine.** ✅ **Landed.** Workspace roots (`Cargo.toml`, root `package.json`
+   Bun workspaces, `turbo.json`), `schema/` promoted from `docs/schema/`, `tooling/codegen/`
+   emitting the TS model surface (`@jose/model-types`), and the `codegen:check` CI gate.
+   *Just the rails — no domain yet.*
 2. **Shared kernels.** `geometry-kernel` + `reference-data` crates, fully tested. They
    unblock everything else.
 3. **Core contexts.** `materials` → `building` → `loads-analysis` → `design-standard`

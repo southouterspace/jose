@@ -7,7 +7,8 @@ docs/
 ├── schema/      current deliverable — the unified domain model
 ├── analysis/    the cross-schema audit that produced it
 ├── reference/   still-active bibliography (referenced, not duplicated)
-└── plans/       forward-looking plans (repo scaffold, rollout)
+├── plans/       forward-looking plans (repo scaffold, rollout)
+└── adr/         architecture decision records
 ```
 
 ## schema/ — current
@@ -36,7 +37,13 @@ Consolidates the six prior artifacts; designed for two forward requirements — 
 
 | File | What it is |
 |---|---|
-| [`repo-scaffold.md`](plans/repo-scaffold.md) | **Proposed** DDD monorepo scaffold: maps the 12 schema layers → bounded contexts, defines the Rust-engine / TS-frontend split, the MODEL→codegen spine, naming/boundary conventions, tidiness governance, and a phased rollout. Planning only — creates no code. |
+| [`repo-scaffold.md`](plans/repo-scaffold.md) | DDD monorepo scaffold: maps the 12 schema layers → bounded contexts, defines the Rust-engine / TS-frontend split, the MODEL→codegen spine, naming/boundary conventions, tidiness governance, and a phased rollout. **Phase 1 (skeleton + spine) landed.** |
+
+## adr/ — decisions
+
+| File | What it is |
+|---|---|
+| [`0001-monorepo-tooling-and-layout.md`](adr/0001-monorepo-tooling-and-layout.md) | Accepted: Bun + Cargo + Turborepo; backend in-repo; `crates/`+`packages/`+`apps/` split; codegen as the drift-checked spine. |
 
 ## Provenance — the five superseded source artifacts
 
