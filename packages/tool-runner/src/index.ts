@@ -40,7 +40,8 @@ export interface ToolDefinition {
   readonly picks: number;
 }
 
-/** The modeled tool catalog. New tools are rows here, not new runner code. */
+/** The modeled tool catalog. A new tool adds a row here (label + pick-count); its commit rule —
+ *  how its completed picks become a [`Command`] — is added to `ToolRunner.commit`. */
 export const TOOL_CATALOG: Record<string, ToolDefinition> = {
   wall: { key: "wall", label: "Wall", picks: 2 },
 };
