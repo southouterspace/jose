@@ -44,8 +44,10 @@ and the ADRs under [`docs/adr/`](./docs/adr/); this map only names the contexts 
 **Frontend ("hands & eyes"):**
 
 - **[web](./apps/web/CONTEXT.md)** (`apps/web` + `packages/render-mirror`, `packages/tool-runner`,
-  `packages/model-types`) — the draw→render client: captures gestures, mirrors the canonical
-  buffer read-only, and renders it. **Has a `CONTEXT.md`.**
+  `packages/model-types`) — the draw→render client. The MVP is a **space-first** modeling loop
+  (draw a footprint in plan → push/pull into a mass in 3D; see
+  [ADR 0007](./docs/adr/0007-space-first-modeling-footprint-push-pull.md)); it captures gestures,
+  mirrors the canonical geometry the engine ships back, and renders it. **Has a `CONTEXT.md`.**
 
 ## Relationships
 

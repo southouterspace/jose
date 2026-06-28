@@ -1,6 +1,6 @@
 # ADR 0006 — World-space placement is produced by the engine, not the renderer
 
-- **Status:** Accepted
+- **Status:** Accepted — principle stands, but **implementation is deferred off the MVP critical path** per [ADR 0007](./0007-space-first-modeling-footprint-push-pull.md) (framing is a post-MVP derived layer; the first 3D slice renders the massing volume, not members).
 - **Date:** 2026-06-28
 - **Context doc:** [`docs/plans/repo-scaffold.md`](../plans/repo-scaffold.md) §5; extends the one-direction rule of [ADR 0003](./0003-wasm-boundary-and-the-buffer-layout-keystone.md)
 
