@@ -5,12 +5,23 @@
 # Phase 1 is the spine only, so the member list is intentionally empty.
 [workspace]
 resolver = "3"
-members = []
+members = [
+    "crates/geometry-kernel",
+    "crates/reference-data",
+]
 
 [workspace.package]
 edition = "2024"
 license = "UNLICENSED"
 publish = false
+
+# Shared lints, inherited by every crate via `[lints] workspace = true`.
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
 
 [profile.release]
 lto = "thin"

@@ -190,6 +190,11 @@ crates/materials/
 `application/`, `ports/`, or other contexts except the two shared kernels. Cross-context
 talk goes through `lib.rs` facades, never into another context's `domain/`.
 
+> **Shared kernels are the exception.** `geometry-kernel` and `reference-data` are *pure
+> domain* — primitives with invariants and behavior, no I/O — so they have **no
+> `ports/`/`adapters/`** (empty layers would be noise). They are flat module trees behind a
+> `lib.rs` facade and carry zero external dependencies.
+
 ---
 
 ## 5. The codegen spine (the keystone)
@@ -212,6 +217,15 @@ Rules:
   drift" a *mechanical guarantee* rather than a hope.
 - **The model is versioned** (`meta.version`, currently `1.0.1`); generated artifacts
   inherit it so a buffer mismatch is caught at load, not at runtime corruption.
+
+> **What is generated vs. hand-authored.** Codegen emits the *mechanical contract* —
+> id vocabularies, the structural manifest, and (Phase 4) the `BufferLayout` byte offsets.
+> It does **not** generate the rich domain types: primitives like `Tick`, `UnitVec3`, and
+> `Plane` carry invariants and behavior that generated structs can't hold, so the kernel
+> crates are hand-authored. The Rust side of codegen lands in **Phase 4**, where the
+> `BufferLayout` keystone (Rust writer ↔ JS reader) actually needs generated Rust; emitting
+> it earlier would be speculative. Until then the TS surface (`@jose/model-types`) is the
+> only generated output, and it is drift-checked in CI.
 
 ---
 
@@ -256,8 +270,12 @@ The repo is docs-only today; the scaffold lands incrementally so `main` is alway
    Bun workspaces, `turbo.json`), `schema/` promoted from `docs/schema/`, `tooling/codegen/`
    emitting the TS model surface (`@jose/model-types`), and the `codegen:check` CI gate.
    *Just the rails — no domain yet.*
-2. **Shared kernels.** `geometry-kernel` + `reference-data` crates, fully tested. They
-   unblock everything else.
+2. **Shared kernels.** ✅ **Landed.** `geometry-kernel` (Tick base unit, vectors, quat,
+   Plane, Transform, BoundingBox, Segment, Path2D, and the extrusion BREP kernel) +
+   `reference-data` (CitationKey, MechanicalProperties, design-value & prescriptive
+   flyweights, and the `Registry`/`Flyweight` pattern) — pure-domain, zero-dependency, 34
+   tests. Registered in the Cargo workspace, which activates the full Rust CI checks
+   (fmt + clippy `-D warnings` + test).
 3. **Core contexts.** `materials` → `building` → `loads-analysis` → `design-standard`
    (the seam), in pipeline order, each behind its facade.
 4. **Boundary + frontend.** `bim-wasm` + `packages/{model-types,render-mirror,tool-runner}`
