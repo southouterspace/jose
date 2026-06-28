@@ -8,7 +8,6 @@
 
 use crate::buffer::{MemberBuffer, MemberRow, NOMINAL_WIDTH};
 use crate::command::{Command, DrawWall};
-use crate::layout::member_placement as layout;
 use building::{
     AssemblyKind, FramingSolver, MemberPlacement, RuleSet, SpacingAnchor, SpacingKey,
     SpacingModule, Wall, WallRole,
@@ -106,17 +105,15 @@ fn spacing_module(inches: f64) -> SpacingModule {
     }
 }
 
-/// Vertical members extend up the wall (+Z); horizontal members run along the baseline (+X). The
-/// framer encodes this by role, so the render row derives the segment end from the role + length.
-fn is_vertical(role: &str) -> bool {
-    matches!(role, "stud" | "king" | "jack" | "cripple" | "post")
-}
-
 /// Flatten one placed member into a render row (a wall-local elevation segment + width + role id).
+///
+/// Vertical members extend up the wall (+Z); horizontal members run along the baseline (+X). The
+/// [`FramingRole`](building::FramingRole) knows which it is and carries its own `roleId`, so the
+/// buffer encoding needs no string lookup and no fallback.
 fn member_row(member: &MemberPlacement) -> MemberRow {
     let origin = member.transform.origin;
     let length = member.length.raw();
-    let (x1, y1, z1) = if is_vertical(&member.role) {
+    let (x1, y1, z1) = if member.role.is_vertical() {
         (origin.x.raw(), origin.y.raw(), origin.z.raw() + length)
     } else {
         (origin.x.raw() + length, origin.y.raw(), origin.z.raw())
@@ -129,16 +126,37 @@ fn member_row(member: &MemberPlacement) -> MemberRow {
         y1,
         z1,
         width: NOMINAL_WIDTH,
-        // Every role the framer emits is in the generated vocabulary; default to plate (0) only if
-        // a future role is added to the framer before the layout is regenerated.
-        role_id: layout::role_id(&member.role).unwrap_or(0),
+        role_id: member.role.id(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::layout::member_placement as layout;
+    use building::FramingRole;
     use geometry_kernel::TICKS_PER_FOOT;
+
+    #[test]
+    fn framing_role_ids_match_the_generated_buffer_vocabulary() {
+        // FramingRole (building) and the generated ROLES table (codegen) are two encodings of one
+        // vocabulary. This guard fails loudly if a schema edit or a new variant makes them drift,
+        // instead of letting member_row mis-encode a roleId at runtime.
+        assert_eq!(FramingRole::ALL.len(), layout::ROLES.len());
+        for (i, &role) in FramingRole::ALL.iter().enumerate() {
+            assert_eq!(
+                role.id() as usize,
+                i,
+                "{role:?} id must equal its ROLES index"
+            );
+            assert_eq!(
+                role.as_str(),
+                layout::ROLES[i],
+                "{role:?} string must match ROLES[{i}]"
+            );
+            assert_eq!(layout::role_id(role.as_str()), Some(role.id()));
+        }
+    }
 
     fn draw_10ft_wall() -> Command {
         Command::DrawWall(DrawWall {

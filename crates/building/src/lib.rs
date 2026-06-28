@@ -31,6 +31,7 @@ pub use domain::placement::{
     BracedBy, BracingAxis, BracingRef, EndCondition, Fixity, LoadFace, MemberEnd, MemberPlacement,
     Orientation,
 };
+pub use domain::role::FramingRole;
 pub use domain::spacing::{SpacingAnchor, SpacingKey, SpacingModule};
 pub use domain::wall::{
     Junction, JunctionMethod, JunctionType, Opening, OpeningType, Wall, WallRole,

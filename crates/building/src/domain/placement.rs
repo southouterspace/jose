@@ -7,6 +7,7 @@
 //! physical facts — it never models the factor stack or any design values (the strategy seam) and
 //! never models the load traversal (the loads layer).
 
+use crate::domain::role::FramingRole;
 use crate::keys::{ConnectionPointRef, MemberDemandRef, MemberPlacementId};
 use geometry_kernel::{Tick, Transform, UnitVec3};
 use materials::SpecKey;
@@ -100,9 +101,9 @@ pub struct MemberPlacement {
     pub id: MemberPlacementId,
     /// Pointer to the shared `StockSpec` flyweight (materials layer). Intrinsic, never copied.
     pub spec_ref: SpecKey,
-    /// Open role string (`stud`|`king`|`jack`|`header`|`cripple`|`sill`|`plate`|`block`, plus
-    /// `joist`|`rafter`|`chord`|`panel`). String-coded so new assemblies extend roles freely.
-    pub role: String,
+    /// The member's framing role — a closed [`FramingRole`] whose discriminant is the SoA `roleId`.
+    /// New assemblies extend the vocabulary by adding a variant, not by inventing a string.
+    pub role: FramingRole,
     /// Rigid placement (origin + rotation), a geometry-kernel primitive.
     pub transform: Transform,
     /// Cut length, **derived** by the solver from wall/opening geometry; recomputed on edit.
@@ -158,7 +159,7 @@ mod tests {
         let p = MemberPlacement {
             id: MemberPlacementId(1),
             spec_ref: SpecKey::from("SPF-STUD-SDRY"),
-            role: "stud".to_owned(),
+            role: FramingRole::Stud,
             transform: Transform::IDENTITY,
             length: Tick(3072),
             orientation: Orientation::vertical_stud(),
@@ -182,7 +183,7 @@ mod tests {
             connections: vec![],
             demand_ref: None,
         };
-        assert_eq!(p.role, "stud");
+        assert_eq!(p.role, FramingRole::Stud);
         assert_eq!(p.bracing[0].braced_by, BracedBy::Sheathing);
         assert!(p.demand_ref.is_none()); // loads are not stored here
     }

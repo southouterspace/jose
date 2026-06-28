@@ -13,7 +13,7 @@ use crate::domain::demand::{MemberDemand, MemberRole};
 use crate::domain::sources::LoadSource;
 use crate::domain::tributary::TributaryArea;
 use crate::keys::{ConnectionGraphRef, DesignStandardRef};
-use building::{MemberPlacement, MemberPlacementId};
+use building::{FramingRole, MemberPlacement, MemberPlacementId};
 use std::collections::BTreeMap;
 
 /// How much of the model to re-derive.
@@ -75,7 +75,7 @@ impl LoadSolver {
         let trib_by: BTreeMap<MemberPlacementId, &TributaryArea> =
             tributaries.iter().map(|t| (t.member_ref, t)).collect();
         let role_by: BTreeMap<MemberPlacementId, MemberRole> =
-            members.iter().map(|m| (m.id, role_of(&m.role))).collect();
+            members.iter().map(|m| (m.id, role_of(m.role))).collect();
 
         // 3. Factor each member under every combo and keep the governing one.
         let mut out = Vec::new();
@@ -162,14 +162,21 @@ fn factor_combo(
     }
 }
 
-/// Map a placement's open role string to the structural [`MemberRole`] the seam keys limit states
-/// on. Unknown roles default to `Beam`.
-fn role_of(role: &str) -> MemberRole {
+/// Map a placement's [`FramingRole`] to the structural [`MemberRole`] the seam keys limit states on.
+/// Exhaustive by construction: adding a framing role makes this fail to compile until it is
+/// classified, so no member silently falls through to a default limit-state set.
+fn role_of(role: FramingRole) -> MemberRole {
     match role {
-        "stud" | "king" | "jack" | "cripple" | "post" => MemberRole::Column,
-        "plate" | "sill" => MemberRole::Bearing,
-        "header" | "joist" | "rafter" | "beam" | "girder" | "chord" => MemberRole::Beam,
-        _ => MemberRole::Beam,
+        FramingRole::Stud
+        | FramingRole::King
+        | FramingRole::Jack
+        | FramingRole::Cripple
+        | FramingRole::Post => MemberRole::Column,
+        FramingRole::Plate | FramingRole::Sill => MemberRole::Bearing,
+        FramingRole::Header | FramingRole::Joist | FramingRole::Rafter | FramingRole::Chord => {
+            MemberRole::Beam
+        }
+        FramingRole::Block | FramingRole::Panel => MemberRole::Brace,
     }
 }
 
@@ -187,7 +194,7 @@ mod tests {
         MemberPlacement {
             id: MemberPlacementId(id),
             spec_ref: SpecKey::from("DF-HEADER"),
-            role: "header".to_owned(),
+            role: FramingRole::Header,
             transform: Transform::IDENTITY,
             length: Tick(4608),
             orientation: Orientation::flat(),

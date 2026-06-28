@@ -3,5 +3,6 @@
 
 pub mod assemblies;
 pub mod placement;
+pub mod role;
 pub mod spacing;
 pub mod wall;
