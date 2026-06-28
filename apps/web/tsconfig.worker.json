@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ESNext", "WebWorker"],
+    "types": []
+  },
+  "include": ["src/engine-worker.ts", "src/protocol.ts", "src/wasm/engine.d.ts"]
+}

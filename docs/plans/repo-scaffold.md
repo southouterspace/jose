@@ -219,13 +219,15 @@ Rules:
   inherit it so a buffer mismatch is caught at load, not at runtime corruption.
 
 > **What is generated vs. hand-authored.** Codegen emits the *mechanical contract* —
-> id vocabularies, the structural manifest, and (Phase 4) the `BufferLayout` byte offsets.
+> id vocabularies, the structural manifest, and (as of Phase 4) the `BufferLayout` byte offsets.
 > It does **not** generate the rich domain types: primitives like `Tick`, `UnitVec3`, and
 > `Plane` carry invariants and behavior that generated structs can't hold, so the kernel
-> crates are hand-authored. The Rust side of codegen lands in **Phase 4**, where the
-> `BufferLayout` keystone (Rust writer ↔ JS reader) actually needs generated Rust; emitting
-> it earlier would be speculative. Until then the TS surface (`@jose/model-types`) is the
-> only generated output, and it is drift-checked in CI.
+> crates are hand-authored. The Rust side of codegen landed in **Phase 4** (✅): the
+> `BufferLayout` keystone is generated to both `crates/bim-core/src/generated/layout.rs` (writer)
+> and `packages/model-types/src/generated/layout.ts` (reader) from
+> `schema/model/buffer-layouts.json`, with a shared `LAYOUT_HASH` the two builds assert at
+> startup. The TS model surface (`@jose/model-types`) is generated too; all of it is
+> drift-checked in CI.
 
 ---
 
@@ -287,8 +289,17 @@ The repo is docs-only today; the scaffold lands incrementally so `main` is alway
    and the loads↔design-standard cycle break are recorded in
    [ADR 0002](../adr/0002-core-context-crate-layout-and-dependency-direction.md). 58 new tests;
    full `fmt` + `clippy -D warnings` + `test` green across the workspace.
-4. **Boundary + frontend.** `bim-wasm` + `packages/{model-types,render-mirror,tool-runner}`
-   + `apps/web` — first end-to-end slice (draw → recompute → render).
+4. **Boundary + frontend.** ✅ **Landed.** The composition root `bim-core` (the `Session`
+   pipeline + the canonical `MemberBuffer`) and the `bim-wasm` wasm-bindgen boundary (the Seam:
+   `drawWall` in, SoA `snapshot` out), plus `packages/render-mirror` (zero-copy typed-array
+   column views) and `packages/tool-runner` (the data-driven `ToolRunner` + `WallTool`), wired
+   into `apps/web` (main thread + engine worker + canvas elevation). The codegen spine now emits
+   the `BufferLayout` keystone to **both** Rust (`bim-core`) and TS (`@jose/model-types`) from
+   `schema/model/buffer-layouts.json`, carrying a shared `LAYOUT_HASH` the two builds assert at
+   startup; `codegen:check` gates the drift. Recorded in
+   [ADR 0003](../adr/0003-wasm-boundary-and-the-buffer-layout-keystone.md). 18 new tests
+   (Rust + Bun); `fmt` + `clippy -D warnings` + host & `wasm32` builds green, full TS typecheck
+   green.
 5. **Supporting + backend.** `cut-optimization`, `estimating`, `drawings-export`,
    `apps/api` (Neon/Drizzle, R2).
 

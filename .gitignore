@@ -8,6 +8,9 @@ dist
 .turbo
 *.tsbuildinfo
 
+# wasm-pack output (a build artifact; the hand-kept ambient contract is src/wasm/engine.d.ts)
+apps/web/src/wasm/pkg
+
 # Bun keeps a binary lockfile; track it, ignore the text mirror cache
 bun.lockb.tmp
 

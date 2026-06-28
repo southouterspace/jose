@@ -8,10 +8,16 @@ output.
 ```
 schema/
 ├── model/      the machine contract — the domain MODEL
-│   └── unified-model.json   12 layers · 178 types · 10-stage pipeline (v1.0.1)
+│   ├── unified-model.json    12 layers · 178 types · 10-stage pipeline (v1.0.1)
+│   └── buffer-layouts.json   SoA column specs → the generated BufferLayout keystone
 └── registry/   type-ownership registry — every type → its one canonical home
     └── type-registry.json
 ```
+
+`buffer-layouts.json` declares each SoA buffer's columns (field, element type, field class);
+codegen computes the byte offsets and emits the identical table to Rust (`bim-core`) and TS
+(`@jose/model-types`), so the worker that writes the bytes and the mirror that reads them
+cannot drift.
 
 ## Rules
 

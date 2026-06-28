@@ -9,8 +9,39 @@
         "typescript": "^5.7.0",
       },
     },
+    "apps/web": {
+      "name": "web",
+      "version": "0.0.0",
+      "dependencies": {
+        "@jose/model-types": "workspace:*",
+        "@jose/render-mirror": "workspace:*",
+        "@jose/tool-runner": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.7.0",
+      },
+    },
     "packages/model-types": {
       "name": "@jose/model-types",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.7.0",
+      },
+    },
+    "packages/render-mirror": {
+      "name": "@jose/render-mirror",
+      "version": "0.0.0",
+      "dependencies": {
+        "@jose/model-types": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.7.0",
+      },
+    },
+    "packages/tool-runner": {
+      "name": "@jose/tool-runner",
       "version": "0.0.0",
       "devDependencies": {
         "@types/bun": "latest",
@@ -33,6 +64,10 @@
     "@jose/codegen": ["@jose/codegen@workspace:tooling/codegen"],
 
     "@jose/model-types": ["@jose/model-types@workspace:packages/model-types"],
+
+    "@jose/render-mirror": ["@jose/render-mirror@workspace:packages/render-mirror"],
+
+    "@jose/tool-runner": ["@jose/tool-runner@workspace:packages/tool-runner"],
 
     "@turbo/darwin-64": ["@turbo/darwin-64@2.10.0", "", { "os": "darwin", "cpu": "x64" }, "sha512-EwvHThXzpY0KGd1/NAmuewI5D+aVa3Rl/OlxE36yfjUKb/+ySrfJrSlEFt8aD1OXwnnaHnQnPKHFndor0Zxlsg=="],
 
@@ -57,5 +92,7 @@
     "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "undici-types": ["undici-types@8.3.0", "", {}, "sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ=="],
+
+    "web": ["web@workspace:apps/web"],
   }
 }

@@ -1,0 +1,24 @@
+[package]
+name = "bim-wasm"
+version = "0.0.0"
+description = "The wasm-bindgen boundary (the Seam): Channel A commands in, Channel B SoA buffer bytes out. The one FFI seam between the Rust worker and the JS main thread."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# cdylib for the wasm artifact; rlib so the crate is checkable/testable on the host target too.
+crate-type = ["cdylib", "rlib"]
+
+# This is the single FFI seam. wasm-bindgen's generated glue is `unsafe`, so this one boundary
+# crate opts out of the workspace `unsafe_code = "deny"` lint (it still runs clippy + the rest).
+[lints.rust]
+unsafe_code = "allow"
+missing_debug_implementations = "warn"
+
+[lints.clippy]
+all = "warn"
+
+[dependencies]
+bim-core = { path = "../bim-core" }
+wasm-bindgen = "0.2"

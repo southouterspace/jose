@@ -1,0 +1,20 @@
+{
+  "name": "web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json",
+    "build:wasm": "wasm-pack build ../../crates/bim-wasm --target web --out-dir ../../apps/web/src/wasm/pkg --out-name bim_wasm",
+    "build": "bun run build:wasm && bun build ./src/main.ts --outdir dist --target browser",
+    "dev": "bun run build:wasm && bun ./serve.ts"
+  },
+  "dependencies": {
+    "@jose/model-types": "workspace:*",
+    "@jose/render-mirror": "workspace:*",
+    "@jose/tool-runner": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

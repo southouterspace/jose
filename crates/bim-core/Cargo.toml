@@ -1,0 +1,15 @@
+[package]
+name = "bim-core"
+version = "0.0.0"
+description = "Composition root: wires the domain contexts into the draw -> recompute pipeline and writes the canonical SoA MemberBuffer the render mirror reads."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+geometry-kernel = { path = "../geometry-kernel" }
+materials = { path = "../materials" }
+building = { path = "../building" }
