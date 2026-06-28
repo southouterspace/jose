@@ -33,9 +33,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # Pinned to match rust-toolchain.toml so CI and local builds use the same compiler.
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: "1.94.1"
           components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
       # Phase 1 has no member crates yet; prove the workspace manifest parses.
       - name: Validate workspace manifest
         run: cargo metadata --no-deps --format-version 1 > /dev/null

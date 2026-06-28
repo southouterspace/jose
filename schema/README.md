@@ -29,6 +29,7 @@ schema/
 ## Provenance
 
 `model/unified-model.json` and `registry/type-registry.json` were promoted from
-`docs/schema/` and `docs/analysis/` respectively when the repo gained a build. The `docs/`
-copies remain the *reference* rendering; these are the *build inputs*. Keep them in sync —
-when the model changes, update both, or collapse the docs copy to a pointer.
+`docs/schema/` and `docs/analysis/` when the repo gained a build, and the duplicate `docs/`
+copies were then removed — **`schema/` is now the sole home** for the machine contract.
+The human-readable rendering [`docs/schema/unified-schema.html`](../docs/schema/unified-schema.html)
+stays in `docs/` and links back here.

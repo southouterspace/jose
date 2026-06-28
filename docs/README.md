@@ -16,7 +16,8 @@ docs/
 | File | What it is |
 |---|---|
 | [`unified-schema.html`](schema/unified-schema.html) | **The deliverable.** One cohesive, future-proof schema — 12 layers, 178 types, 10-stage pipeline. Renders human cards + a machine-readable MODEL in the shared visual language. Includes migration map, alias table, changelog, and resolved/open decisions. **v1.0.1.** |
-| [`unified-model.json`](schema/unified-model.json) | The standalone machine contract (the MODEL object), for codegen / tooling. |
+
+> The machine contract (the MODEL object, for codegen / tooling) now lives at [`schema/model/unified-model.json`](../schema/model/unified-model.json) — promoted out of `docs/` so it's a real build input. This `docs/schema/` directory keeps the human-readable rendering only.
 
 Consolidates the six prior artifacts; designed for two forward requirements — **additional material types** (via the `DesignStandard` Strategy seam + open registry keys) and **project estimating / cost** (the `estimating-cost` layer).
 
@@ -25,7 +26,8 @@ Consolidates the six prior artifacts; designed for two forward requirements — 
 | File | What it is |
 |---|---|
 | [`cross-schema-analysis.md`](analysis/cross-schema-analysis.md) | Deep cross-schema architecture analysis, findings ranked by severity (S1→S3), with the recommended order of operations. The blueprint the unified schema was built from. |
-| [`type-registry.json`](analysis/type-registry.json) | Machine-readable type-ownership registry: every type → canonical home → cross-refs, plus collisions, dangling refs, base-unit audit, and pipeline coherence. |
+
+> The type-ownership registry (every type → canonical home → cross-refs, plus collisions, dangling refs, base-unit audit) now lives at [`schema/registry/type-registry.json`](../schema/registry/type-registry.json) — promoted alongside the MODEL as a build input.
 
 ## reference/ — still active
 

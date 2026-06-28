@@ -2,7 +2,7 @@
 **Parametric Residential Framing Tool — constrained BIM engine**
 Scope: four domain schemas (materials, solver, drawing-workspace, design-standard) + two context artifacts (architecture draft, reference library). Analysis and registry only — no schema edits. Conventions and visual language left intact for later.
 
-Companion machine contract: [`type-registry.json`](type-registry.json) — 74 types indexed, 11 collisions, 13 dangling refs.
+Companion machine contract: [`type-registry.json`](../../schema/registry/type-registry.json) — 74 types indexed, 11 collisions, 13 dangling refs (promoted from `docs/analysis/` into `schema/registry/` as a build input).
 
 ---
 
