@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json",
+    "test": "bun test",
     "build:wasm": "wasm-pack build ../../crates/bim-wasm --target web --out-dir ../../apps/web/src/wasm/pkg --out-name bim_wasm",
     "build": "bun run build:wasm && vite build",
     "dev": "bun run build:wasm && vite"
@@ -14,11 +15,14 @@
     "@jose/render-mirror": "workspace:*",
     "@jose/tool-runner": "workspace:*",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "three": "^0.169.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
+    "@types/bun": "catalog:",
+    "@types/three": "^0.169.0",
     "@vitejs/plugin-react": "^4.7.0",
     "typescript": "catalog:",
     "vite": "^5.4.21",

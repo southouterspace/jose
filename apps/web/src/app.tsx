@@ -8,6 +8,7 @@
 
 import { useEngineStore } from "./engine-store";
 import { PlanView } from "./plan-view";
+import { ThreeView } from "./three-view";
 
 const TOOLS = [
   { key: "footprint", label: "Footprint" },
@@ -16,6 +17,8 @@ const TOOLS = [
 
 export function App() {
   const store = useEngineStore();
+  // Push/Pull needs a mass to act on — enable it only once a volume exists.
+  const hasMass = (store.volume?.count ?? 0) > 0;
 
   return (
     <div className="app">
@@ -26,8 +29,8 @@ export function App() {
             <button
               aria-pressed={store.activeTool === tool.key}
               className="toolbar__tool"
-              // Push/Pull is the next phase — only the footprint tool is wired this slice.
-              disabled={tool.key !== "footprint"}
+              // Push/Pull acts on the 3D mass — only available once a volume exists.
+              disabled={tool.key === "pushpull" && !hasMass}
               key={tool.key}
               onClick={() => store.activate(tool.key)}
               type="button"
@@ -43,7 +46,7 @@ export function App() {
           <PlanView store={store} />
         </section>
         <section aria-label="3D viewport" className="viewport">
-          <span className="viewport__label">3D</span>
+          <ThreeView store={store} />
         </section>
       </main>
 
@@ -55,11 +58,27 @@ export function App() {
 }
 
 function statusText(store: ReturnType<typeof useEngineStore>): string {
+  if (store.activeTool === "pushpull") {
+    return "Push/Pull active — drag the top cap in 3D to set the mass height";
+  }
   if (store.footprint && store.footprint.count >= 3) {
-    return `Footprint: ${store.footprint.count} vertices`;
+    const ft = store.volume ? heightFeet(store.volume) : null;
+    return ft === null
+      ? `Footprint: ${store.footprint.count} vertices`
+      : `Footprint: ${store.footprint.count} vertices · mass ${ft}ft tall`;
   }
   if (store.pendingPicks.length > 0) {
     return `Drawing footprint — ${store.pendingPicks.length} point(s); click the first to close`;
   }
   return "Ready — Footprint tool active; click to place vertices";
+}
+
+/** The current mass height in feet (1ft = 384 ticks), to one decimal — for the status bar. */
+function heightFeet(
+  volume: ReturnType<typeof useEngineStore>["volume"]
+): string | null {
+  if (!volume || volume.count < 1) {
+    return null;
+  }
+  return (volume.row(0).height / 384).toFixed(1);
 }

@@ -1,5 +1,10 @@
 import { expect, test } from "bun:test";
-import { DEFAULT_SETTINGS, TOOL_CATALOG, ToolRunner } from "./index";
+import {
+  DEFAULT_SETTINGS,
+  pushPullDistance,
+  TOOL_CATALOG,
+  ToolRunner,
+} from "./index";
 
 test("the wall tool emits a DrawWall command on the second pick", () => {
   const runner = new ToolRunner();
@@ -120,4 +125,44 @@ test("activating the footprint tool clears any in-progress wall operation", () =
   runner.activate("footprint");
   expect(runner.pendingPicks).toHaveLength(0);
   expect(TOOL_CATALOG.footprint?.key).toBe("footprint");
+});
+
+test("pushpull is a gesture tool, not a runner pick-tool, so the runner must not be asked to activate it", () => {
+  // Regression: the store's `activate` branches on `key in TOOL_CATALOG`. `pushpull` is the 3D
+  // drag gesture, NOT a runner tool — forwarding it to the runner throws "unknown tool".
+  expect("footprint" in TOOL_CATALOG).toBe(true);
+  expect("pushpull" in TOOL_CATALOG).toBe(false);
+
+  const runner = new ToolRunner(undefined, "footprint");
+  // Mid-draw, then "switch to pushpull" the store's way: cancel (not activate) — must not throw.
+  runner.pick({ x: 0, y: 0 });
+  expect(runner.pendingPicks).toHaveLength(1);
+  expect(() => runner.cancel()).not.toThrow();
+  expect(runner.pendingPicks).toHaveLength(0);
+
+  // Switching back to footprint re-activates the runner tool and plan drawing still works.
+  runner.activate("footprint");
+  expect(runner.activeKey).toBe("footprint");
+  expect(runner.pick({ x: 100, y: 100 })).toBeNull();
+  expect(runner.pendingPicks).toHaveLength(1);
+});
+
+test("dragging the top cap up (negative pixel delta) raises the mass", () => {
+  // Screen Y is down-positive, so an upward drag is a negative pixel delta.
+  // scale = 4 ticks/px → 100px up = +400 ticks (raise).
+  expect(pushPullDistance(-100, 4)).toBe(400);
+});
+
+test("dragging the top cap down (positive pixel delta) lowers the mass", () => {
+  expect(pushPullDistance(50, 4)).toBe(-200);
+});
+
+test("a zero pointer delta yields exactly zero distance (no recompute)", () => {
+  expect(pushPullDistance(0, 4)).toBe(0);
+});
+
+test("push/pull distance honors the ticks-per-pixel scale and rounds to whole ticks", () => {
+  expect(pushPullDistance(-10, 0.5)).toBe(5);
+  // -7px * 1.3 = 9.1 → rounds to 9 whole ticks.
+  expect(pushPullDistance(-7, 1.3)).toBe(9);
 });

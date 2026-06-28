@@ -36,8 +36,35 @@ export interface DrawFootprintCommand {
   readonly ys: readonly number[];
 }
 
+/** Push/pull a volume's top cap to a new height. Mirrors the engine's `pushPull(volumeId,
+ *  faceIndex, distance)` ABI: `distance` is a signed tick delta (positive raises the mass, negative
+ *  lowers it); `faceIndex` is the kernel's canonical face (`TOP_FACE`) the gesture resolved to.
+ *  The 3D view never invents a face — it names one the engine defined (ADR 0008 §3). */
+export interface PushPullCommand {
+  readonly distance: number;
+  readonly faceIndex: number;
+  readonly kind: "pushPull";
+  readonly volumeId: number;
+}
+
 /** The immutable intents the runner can emit (one variant per modeled tool). */
-export type Command = DrawFootprintCommand | DrawWallCommand;
+export type Command = DrawFootprintCommand | DrawWallCommand | PushPullCommand;
+
+/**
+ * Map a vertical pointer drag (screen pixels) to a signed push/pull tick distance.
+ *
+ * Screen Y grows *downward*, so dragging **up** (the mass getting taller) is a *negative* pixel
+ * delta — we negate it so dragging up yields a positive distance (raise the top cap). `scale` is
+ * world ticks per pixel; a zero delta yields exactly zero (no recompute). Pure: no rounding policy
+ * beyond `Math.round` so the engine receives whole ticks.
+ *
+ * @param deltaPixels screen-space `pointerY - startY` (down-positive)
+ * @param scale       world ticks per screen pixel (must be > 0)
+ */
+export function pushPullDistance(deltaPixels: number, scale: number): number {
+  // `+ 0` collapses a `-0` (from `Math.round(-0)`) to `0` — a zero drag is exactly no recompute.
+  return Math.round(-deltaPixels * scale) + 0;
+}
 
 /** How a tool decides it is satisfied and should commit.
  *  - `count`: commit once `picks` snapped points are collected (e.g. the two-pick wall).

@@ -22,6 +22,15 @@ export type EngineRequest =
       readonly kind: "drawFootprint";
       readonly xs: readonly number[];
       readonly ys: readonly number[];
+    }
+  | {
+      /** Push/pull a volume's top cap. Mirrors wasm `pushPull(volumeId, faceIndex, distance)`:
+       *  `faceIndex` must be the kernel's `TOP_FACE`; `distance` is a signed tick delta. The engine
+       *  validates the face and rejects a non-positive resulting height. */
+      readonly kind: "pushPull";
+      readonly volumeId: number;
+      readonly faceIndex: number;
+      readonly distance: number;
     };
 
 /** Channel B + acks (worker → main thread). */
