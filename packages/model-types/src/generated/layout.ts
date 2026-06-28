@@ -3,7 +3,7 @@
 
 /** Digest of the generated layout tables; the Rust writer carries the same constant so a
  * schema/codegen mismatch is caught at startup, not as silent buffer corruption. */
-export const LAYOUT_HASH = "layout-e8d26ccb" as const;
+export const LAYOUT_HASH = "layout-e3d66670" as const;
 
 /** Target byte alignment for every column start. */
 export const LAYOUT_ALIGNMENT = 4 as const;
@@ -43,6 +43,39 @@ export interface BufferLayout {
 }
 
 export const BUFFER_LAYOUTS = {
+  "Footprint": {
+    "bufferBytes": 12288,
+    "capacity": 1024,
+    "columns": [
+      {
+        "arrayKind": "Int32Array",
+        "byteOffset": 0,
+        "elementType": "i32",
+        "field": "x",
+        "fieldClass": "linearTick",
+        "stride": 4
+      },
+      {
+        "arrayKind": "Int32Array",
+        "byteOffset": 4096,
+        "elementType": "i32",
+        "field": "y",
+        "fieldClass": "linearTick",
+        "stride": 4
+      },
+      {
+        "arrayKind": "Uint32Array",
+        "byteOffset": 8192,
+        "elementType": "u32",
+        "field": "spaceId",
+        "fieldClass": "id",
+        "stride": 4
+      }
+    ],
+    "domainType": "Footprint",
+    "elementStride": 12,
+    "roles": []
+  },
   "MemberPlacement": {
     "bufferBytes": 131072,
     "capacity": 4096,
@@ -129,5 +162,38 @@ export const BUFFER_LAYOUTS = {
       "chord",
       "panel"
     ]
+  },
+  "Volume": {
+    "bufferBytes": 3072,
+    "capacity": 256,
+    "columns": [
+      {
+        "arrayKind": "Uint32Array",
+        "byteOffset": 0,
+        "elementType": "u32",
+        "field": "volumeId",
+        "fieldClass": "id",
+        "stride": 4
+      },
+      {
+        "arrayKind": "Uint32Array",
+        "byteOffset": 1024,
+        "elementType": "u32",
+        "field": "spaceId",
+        "fieldClass": "id",
+        "stride": 4
+      },
+      {
+        "arrayKind": "Int32Array",
+        "byteOffset": 2048,
+        "elementType": "i32",
+        "field": "height",
+        "fieldClass": "linearTick",
+        "stride": 4
+      }
+    ],
+    "domainType": "Volume",
+    "elementStride": 12,
+    "roles": []
   }
 } as const satisfies Record<string, BufferLayout>;

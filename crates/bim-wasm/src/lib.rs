@@ -13,7 +13,7 @@
 //! All domain logic lives in [`bim_core`] and the context crates; this crate is a thin marshaling
 //! shell — the only crate in the workspace that contains FFI `unsafe` (via the wasm-bindgen macro).
 
-use bim_core::{Command, DrawWall, Session};
+use bim_core::{Command, DrawFootprint, DrawWall, PushPull, Session};
 use wasm_bindgen::prelude::*;
 
 /// The engine handle exposed to JavaScript. Wraps the canonical [`Session`]; its methods are the
@@ -62,10 +62,44 @@ impl Engine {
         })) as u32
     }
 
+    /// Channel A: draw (or redraw) the current space's footprint from a closed ring of world-XY
+    /// vertices in ticks. `xs` and `ys` are parallel columns (one entry per vertex); the closing
+    /// edge is implicit. Returns the live member count (footprint/volume counts have accessors).
+    #[wasm_bindgen(js_name = drawFootprint)]
+    pub fn draw_footprint(&mut self, xs: &[i32], ys: &[i32]) -> u32 {
+        let vertices = xs.iter().zip(ys.iter()).map(|(&x, &y)| (x, y)).collect();
+        self.session
+            .apply(Command::DrawFootprint(DrawFootprint { vertices })) as u32
+    }
+
+    /// Channel A: push/pull a face of the current volume by a signed tick distance (positive =
+    /// extrude, negative = inset). The engine validates `face_index` is the top cap. Returns the
+    /// live member count.
+    #[wasm_bindgen(js_name = pushPull)]
+    pub fn push_pull(&mut self, volume_id: u32, face_index: u32, distance: i32) -> u32 {
+        self.session.apply(Command::PushPull(PushPull {
+            volume_id,
+            face_index,
+            distance,
+        })) as u32
+    }
+
     /// The live member count.
     #[wasm_bindgen(js_name = memberCount)]
     pub fn member_count(&self) -> u32 {
         self.session.member_count() as u32
+    }
+
+    /// The live footprint vertex count.
+    #[wasm_bindgen(js_name = footprintCount)]
+    pub fn footprint_count(&self) -> u32 {
+        self.session.footprint_count() as u32
+    }
+
+    /// The live volume (mass) count.
+    #[wasm_bindgen(js_name = volumeCount)]
+    pub fn volume_count(&self) -> u32 {
+        self.session.volume_count() as u32
     }
 
     /// Channel B: a copy of the canonical SoA buffer bytes for the render mirror to view.
@@ -75,6 +109,18 @@ impl Engine {
     /// the reader code is identical either way.
     pub fn snapshot(&self) -> Vec<u8> {
         self.session.buffer_bytes().to_vec()
+    }
+
+    /// Channel B: a copy of the canonical footprint SoA bytes for the plan view to read.
+    #[wasm_bindgen(js_name = footprintSnapshot)]
+    pub fn footprint_snapshot(&self) -> Vec<u8> {
+        self.session.footprint_bytes().to_vec()
+    }
+
+    /// Channel B: a copy of the canonical volume SoA bytes for the 3D view to read.
+    #[wasm_bindgen(js_name = volumeSnapshot)]
+    pub fn volume_snapshot(&self) -> Vec<u8> {
+        self.session.volume_bytes().to_vec()
     }
 
     /// The generated layout digest. JS compares this against its own generated `LAYOUT_HASH` at

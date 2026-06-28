@@ -6,7 +6,9 @@
 //! copy. Linear values are little-endian integer ticks regardless of host, matching how the wasm
 //! reader (always little-endian) interprets the same bytes.
 
+use crate::layout::footprint as FP;
 use crate::layout::member_placement as L;
+use crate::layout::volume as VOL;
 
 /// Nominal section draw width — a dressed 1.5in face = 48 ticks. Stored per row so the width can
 /// vary by spec later without touching the layout.
@@ -120,6 +122,149 @@ impl MemberBuffer {
         let at = col_offset + index * 4;
         u32::from_le_bytes(self.bytes[at..at + 4].try_into().unwrap())
     }
+}
+
+/// One footprint vertex row: a world-XY point (ticks) tagged with the space ring it belongs to.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct FootprintRow {
+    pub x: i32,
+    pub y: i32,
+    pub space_id: u32,
+}
+
+/// A column store for the `Footprint` buffer — the plan view's entire data source. Laid out
+/// exactly as the generated [`footprint`](crate::layout::footprint) table says (pure column-major),
+/// mirroring [`MemberBuffer`].
+#[derive(Clone, Debug)]
+pub struct FootprintBuffer {
+    bytes: Vec<u8>,
+    len: usize,
+}
+
+impl Default for FootprintBuffer {
+    fn default() -> Self {
+        FootprintBuffer::new()
+    }
+}
+
+impl FootprintBuffer {
+    /// A zeroed buffer sized for the generated column block.
+    pub fn new() -> FootprintBuffer {
+        FootprintBuffer {
+            bytes: vec![0u8; FP::BUFFER_BYTES],
+            len: 0,
+        }
+    }
+
+    /// Number of live vertex rows written.
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Whether no rows have been written.
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// The raw column-block bytes — handed to JS as the read-only render mirror.
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
+    /// Drop all rows; `len` bounds what the reader walks, so stale tail bytes are never read.
+    pub fn clear(&mut self) {
+        self.len = 0;
+    }
+
+    /// Append one vertex row. Returns `false` (dropping the row) when the buffer is full.
+    pub fn push(&mut self, row: FootprintRow) -> bool {
+        if self.len >= FP::CAPACITY {
+            return false;
+        }
+        let i = self.len;
+        write_i32(&mut self.bytes, FP::X_OFFSET, i, row.x);
+        write_i32(&mut self.bytes, FP::Y_OFFSET, i, row.y);
+        write_u32(&mut self.bytes, FP::SPACE_ID_OFFSET, i, row.space_id);
+        self.len += 1;
+        true
+    }
+}
+
+/// One volume (mass) row: the scalars that, with the footprint, define the extruded solid.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct VolumeRow {
+    pub volume_id: u32,
+    pub space_id: u32,
+    pub height: i32,
+}
+
+/// A column store for the `Volume` buffer — the 3D view reads `footprint` + `volume`. Laid out
+/// exactly as the generated [`volume`](crate::layout::volume) table says (pure column-major).
+#[derive(Clone, Debug)]
+pub struct VolumeBuffer {
+    bytes: Vec<u8>,
+    len: usize,
+}
+
+impl Default for VolumeBuffer {
+    fn default() -> Self {
+        VolumeBuffer::new()
+    }
+}
+
+impl VolumeBuffer {
+    /// A zeroed buffer sized for the generated column block.
+    pub fn new() -> VolumeBuffer {
+        VolumeBuffer {
+            bytes: vec![0u8; VOL::BUFFER_BYTES],
+            len: 0,
+        }
+    }
+
+    /// Number of live volume rows written.
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Whether no rows have been written.
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// The raw column-block bytes — handed to JS as the read-only render mirror.
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
+    /// Drop all rows; `len` bounds what the reader walks, so stale tail bytes are never read.
+    pub fn clear(&mut self) {
+        self.len = 0;
+    }
+
+    /// Append one volume row. Returns `false` (dropping the row) when the buffer is full.
+    pub fn push(&mut self, row: VolumeRow) -> bool {
+        if self.len >= VOL::CAPACITY {
+            return false;
+        }
+        let i = self.len;
+        write_u32(&mut self.bytes, VOL::VOLUME_ID_OFFSET, i, row.volume_id);
+        write_u32(&mut self.bytes, VOL::SPACE_ID_OFFSET, i, row.space_id);
+        write_i32(&mut self.bytes, VOL::HEIGHT_OFFSET, i, row.height);
+        self.len += 1;
+        true
+    }
+}
+
+/// Write one little-endian i32 into a column at row `index`.
+fn write_i32(bytes: &mut [u8], col_offset: usize, index: usize, value: i32) {
+    let at = col_offset + index * 4;
+    bytes[at..at + 4].copy_from_slice(&value.to_le_bytes());
+}
+
+/// Write one little-endian u32 into a column at row `index`.
+fn write_u32(bytes: &mut [u8], col_offset: usize, index: usize, value: u32) {
+    let at = col_offset + index * 4;
+    bytes[at..at + 4].copy_from_slice(&value.to_le_bytes());
 }
 
 #[cfg(test)]

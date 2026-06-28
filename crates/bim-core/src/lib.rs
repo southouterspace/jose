@@ -27,6 +27,8 @@ mod session;
 #[path = "generated/layout.rs"]
 pub mod layout;
 
-pub use buffer::{MemberBuffer, MemberRow, NOMINAL_WIDTH};
-pub use command::{Command, DrawWall};
+pub use buffer::{
+    FootprintBuffer, FootprintRow, MemberBuffer, MemberRow, NOMINAL_WIDTH, VolumeBuffer, VolumeRow,
+};
+pub use command::{Command, DrawFootprint, DrawWall, PushPull};
 pub use session::Session;

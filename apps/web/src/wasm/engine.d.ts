@@ -19,10 +19,24 @@ declare module "*/bim_wasm.js" {
       height: number,
       spacingInches: number
     ): number;
+    /** Channel A: draw/redraw the current space's footprint from a closed ring of plan vertices
+     *  (parallel tick columns); returns the live member count. */
+    drawFootprint(xs: Int32Array, ys: Int32Array): number;
+    /** Channel A: push/pull a volume's face (the 3D top-cap gesture) by a signed tick distance;
+     *  returns the live volume count. */
+    pushPull(volumeId: number, faceIndex: number, distance: number): number;
     /** Live member count. */
     memberCount(): number;
+    /** Live footprint vertex count. */
+    footprintCount(): number;
+    /** Live volume (mass) count. */
+    volumeCount(): number;
     /** Channel B: a copy of the canonical SoA buffer bytes. */
     snapshot(): Uint8Array;
+    /** Channel B: a copy of the canonical footprint SoA bytes for the plan view. */
+    footprintSnapshot(): Uint8Array;
+    /** Channel B: a copy of the canonical volume SoA bytes for the 3D view. */
+    volumeSnapshot(): Uint8Array;
     /** The generated `BufferLayout` digest, for the startup drift assertion. */
     layoutHash(): string;
     /** Bytes per logical element. */
