@@ -189,6 +189,34 @@ mod tests {
     }
 
     #[test]
+    fn footprint_and_volume_buffers_are_pure_column_major() {
+        // ADR 0008: the plan view reads the `footprint` buffer (one row per world-XY vertex),
+        // the 3D view reads `footprint` + `volume`. Lock the generated contract — column count,
+        // capacity, and that every column is exactly CAPACITY contiguous elements at a generated
+        // offset (pure column-major, mirroring the member_placement assertions above).
+        use crate::layout::{footprint, volume};
+
+        // footprint: x (i32) | y (i32) | spaceId (u32) — three 4-byte columns.
+        assert_eq!(footprint::DOMAIN_TYPE, "Footprint");
+        assert_eq!(footprint::CAPACITY, 1024);
+        assert_eq!(footprint::ELEMENT_STRIDE, 12); // 3 columns * 4 bytes
+        assert_eq!(footprint::BUFFER_BYTES, footprint::CAPACITY * 12);
+        // Columns are CAPACITY contiguous elements each, back to back from base.
+        assert_eq!(footprint::X_OFFSET, 0);
+        assert_eq!(footprint::Y_OFFSET, footprint::CAPACITY * 4);
+        assert_eq!(footprint::SPACE_ID_OFFSET, footprint::CAPACITY * 4 * 2);
+
+        // volume: volumeId (u32) | spaceId (u32) | height (i32) — three 4-byte columns.
+        assert_eq!(volume::DOMAIN_TYPE, "Volume");
+        assert_eq!(volume::CAPACITY, 256);
+        assert_eq!(volume::ELEMENT_STRIDE, 12);
+        assert_eq!(volume::BUFFER_BYTES, volume::CAPACITY * 12);
+        assert_eq!(volume::VOLUME_ID_OFFSET, 0);
+        assert_eq!(volume::SPACE_ID_OFFSET, volume::CAPACITY * 4);
+        assert_eq!(volume::HEIGHT_OFFSET, volume::CAPACITY * 4 * 2);
+    }
+
+    #[test]
     fn vertical_studs_extend_in_z_plates_in_x() {
         // Decode the first stud and the first plate straight out of the buffer's column bytes.
         let mut s = Session::new();

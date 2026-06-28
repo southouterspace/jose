@@ -6,7 +6,7 @@
 
 /// Digest of the generated layout tables; the JS reader carries the same constant so a
 /// schema/codegen mismatch is caught at startup, not as silent buffer corruption.
-pub const LAYOUT_HASH: &str = "layout-e8d26ccb";
+pub const LAYOUT_HASH: &str = "layout-e3d66670";
 
 /// Target byte alignment for every column start.
 pub const ALIGNMENT: usize = 4;
@@ -54,4 +54,38 @@ pub mod member_placement {
     pub fn role_id(role: &str) -> Option<u32> {
         ROLES.iter().position(|r| *r == role).map(|i| i as u32)
     }
+}
+
+/// Layout of the `Footprint` SoA buffer (pure column-major).
+pub mod footprint {
+    /// Domain type this buffer mirrors.
+    pub const DOMAIN_TYPE: &str = "Footprint";
+    /// Rows allocated before a grow is required.
+    pub const CAPACITY: usize = 1024;
+    /// Total bytes per logical element across all columns.
+    pub const ELEMENT_STRIDE: usize = 12;
+    /// Total bytes of the column block (CAPACITY rows of every column).
+    pub const BUFFER_BYTES: usize = 12288;
+
+    /// Byte offset of element[0] for each column, from the buffer base. Generated.
+    pub const X_OFFSET: usize = 0;
+    pub const Y_OFFSET: usize = 4096;
+    pub const SPACE_ID_OFFSET: usize = 8192;
+}
+
+/// Layout of the `Volume` SoA buffer (pure column-major).
+pub mod volume {
+    /// Domain type this buffer mirrors.
+    pub const DOMAIN_TYPE: &str = "Volume";
+    /// Rows allocated before a grow is required.
+    pub const CAPACITY: usize = 256;
+    /// Total bytes per logical element across all columns.
+    pub const ELEMENT_STRIDE: usize = 12;
+    /// Total bytes of the column block (CAPACITY rows of every column).
+    pub const BUFFER_BYTES: usize = 3072;
+
+    /// Byte offset of element[0] for each column, from the buffer base. Generated.
+    pub const VOLUME_ID_OFFSET: usize = 0;
+    pub const SPACE_ID_OFFSET: usize = 1024;
+    pub const HEIGHT_OFFSET: usize = 2048;
 }

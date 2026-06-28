@@ -33,6 +33,26 @@
         "chord",
         "panel"
       ]
+    },
+    {
+      "domainType": "Footprint",
+      "note": "The space-first plan-view source (ADR 0008): one row per footprint vertex. Vertices are a closed world-XY polygon ring (top-down plan plane is world XY), grouped by `spaceId` — the ring/space a vertex belongs to. Linear geometry is integer ticks (1/32in). This buffer is the plan view's entire data source; the 3D view extrudes it with `Volume.height`.",
+      "capacity": 1024,
+      "columns": [
+        { "field": "x", "elementType": "i32", "fieldClass": "linearTick", "note": "Vertex X in the world-XY plan plane, ticks." },
+        { "field": "y", "elementType": "i32", "fieldClass": "linearTick", "note": "Vertex Y in the world-XY plan plane, ticks." },
+        { "field": "spaceId", "elementType": "u32", "fieldClass": "id", "note": "The space/footprint ring this vertex belongs to — groups consecutive vertices into one closed polygon." }
+      ]
+    },
+    {
+      "domainType": "Volume",
+      "note": "The 3D massing-view source (ADR 0008): one row per extruded mass. With the matching `Footprint` ring it defines an extruded solid (base + top cap; side faces deferred). Linear geometry is integer ticks (1/32in).",
+      "capacity": 256,
+      "columns": [
+        { "field": "volumeId", "elementType": "u32", "fieldClass": "id", "note": "Stable id of this mass — the push/pull target the engine validates." },
+        { "field": "spaceId", "elementType": "u32", "fieldClass": "id", "note": "The `Footprint` ring (by `spaceId`) this volume extrudes." },
+        { "field": "height", "elementType": "i32", "fieldClass": "linearTick", "note": "Extrude height above the base plane, ticks." }
+      ]
     }
   ]
 }
