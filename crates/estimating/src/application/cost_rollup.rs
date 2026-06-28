@@ -121,8 +121,9 @@ impl CostRollup {
         let nodes = match input.group_by {
             GroupBy::CostType => self.nodes_by_cost_type(input),
             // CostCode and Both both produce the WBS breakdown; the type axis is folded into Both
-            // at the grand node for this scaffold.
-            _ => self.nodes_by_cost_code(input),
+            // at the grand node for this scaffold. Listed explicitly (not `_`) so a new GroupBy
+            // variant must choose its breakdown rather than silently inheriting the WBS one.
+            GroupBy::CostCode | GroupBy::Both => self.nodes_by_cost_code(input),
         };
 
         RollupOutput {

@@ -9,6 +9,7 @@ use crate::domain::placement::{
     BracedBy, BracingAxis, BracingRef, EndCondition, Fixity, MemberEnd, MemberPlacement,
     Orientation,
 };
+use crate::domain::role::FramingRole;
 use crate::domain::wall::{Junction, JunctionMethod, OpeningType, Wall};
 use crate::keys::MemberPlacementId;
 use geometry_kernel::{Tick, TickVec3, Transform};
@@ -128,7 +129,7 @@ impl FramingSolver {
             let z = i as i32 * PLATE_THICKNESS;
             out.push(self.member(
                 rules.plate_spec.clone(),
-                "plate",
+                FramingRole::Plate,
                 TickVec3::new(Tick(0), Tick(0), Tick(z)),
                 wall.length,
                 Orientation::flat(),
@@ -138,7 +139,7 @@ impl FramingSolver {
             let z = wall.height.raw() - (i as i32 + 1) * PLATE_THICKNESS;
             out.push(self.member(
                 rules.plate_spec.clone(),
-                "plate",
+                FramingRole::Plate,
                 TickVec3::new(Tick(0), Tick(0), Tick(z)),
                 wall.length,
                 Orientation::flat(),
@@ -161,7 +162,14 @@ impl FramingSolver {
             }) {
                 continue; // interior of an opening — framed by opening members instead
             }
-            out.push(self.stud(rules.stud_spec.clone(), "stud", x, bottom_z, stud_len, step));
+            out.push(self.stud(
+                rules.stud_spec.clone(),
+                FramingRole::Stud,
+                x,
+                bottom_z,
+                stud_len,
+                step,
+            ));
         }
 
         // Opening framing: king studs at the edges, a jack supporting a header, and a sill +
@@ -174,7 +182,7 @@ impl FramingSolver {
             for &edge in &[a, b] {
                 out.push(self.stud(
                     rules.stud_spec.clone(),
-                    "king",
+                    FramingRole::King,
                     edge,
                     bottom_z,
                     stud_len,
@@ -185,7 +193,7 @@ impl FramingSolver {
             for &jack in &[a + PLATE_THICKNESS, b - PLATE_THICKNESS] {
                 out.push(self.stud(
                     rules.stud_spec.clone(),
-                    "jack",
+                    FramingRole::Jack,
                     jack,
                     bottom_z,
                     Tick((header_underside - bottom_z).max(0)),
@@ -195,7 +203,7 @@ impl FramingSolver {
             // Header across the opening (bearing onto the jacks each side).
             out.push(self.member(
                 rules.header_spec.clone(),
-                "header",
+                FramingRole::Header,
                 TickVec3::new(Tick(a), Tick(0), Tick(header_underside)),
                 Tick(o.width.raw() + 2 * PLATE_THICKNESS),
                 Orientation::flat(),
@@ -204,7 +212,7 @@ impl FramingSolver {
             if o.opening_type == OpeningType::Window && o.sill_height.raw() > bottom_z {
                 out.push(self.member(
                     rules.plate_spec.clone(),
-                    "sill",
+                    FramingRole::Sill,
                     TickVec3::new(Tick(a), Tick(0), o.sill_height),
                     o.width,
                     Orientation::flat(),
@@ -213,7 +221,7 @@ impl FramingSolver {
                 while cx < b {
                     out.push(self.stud(
                         rules.stud_spec.clone(),
-                        "cripple",
+                        FramingRole::Cripple,
                         cx,
                         bottom_z,
                         Tick((o.sill_height.raw() - bottom_z).max(0)),
@@ -228,7 +236,14 @@ impl FramingSolver {
         // counted exactly once.
         for j in junctions.iter().filter(|j| j.is_owner(wall.id)) {
             for _ in 0..j.method.post_count() {
-                out.push(self.stud(rules.stud_spec.clone(), "post", 0, bottom_z, stud_len, step));
+                out.push(self.stud(
+                    rules.stud_spec.clone(),
+                    FramingRole::Post,
+                    0,
+                    bottom_z,
+                    stud_len,
+                    step,
+                ));
             }
         }
 
@@ -241,7 +256,7 @@ impl FramingSolver {
     fn stud(
         &mut self,
         spec: SpecKey,
-        role: &str,
+        role: FramingRole,
         x: i32,
         bottom_z: i32,
         length: Tick,
@@ -250,7 +265,7 @@ impl FramingSolver {
         MemberPlacement {
             id: self.fresh_id(),
             spec_ref: spec,
-            role: role.to_owned(),
+            role,
             transform: Transform::at(TickVec3::new(Tick(x), Tick(0), Tick(bottom_z))),
             length,
             orientation: Orientation::vertical_stud(),
@@ -280,7 +295,7 @@ impl FramingSolver {
     fn member(
         &mut self,
         spec: SpecKey,
-        role: &str,
+        role: FramingRole,
         origin: TickVec3,
         length: Tick,
         orientation: Orientation,
@@ -288,7 +303,7 @@ impl FramingSolver {
         MemberPlacement {
             id: self.fresh_id(),
             spec_ref: spec,
-            role: role.to_owned(),
+            role,
             transform: Transform::at(origin),
             length,
             orientation,
@@ -350,13 +365,22 @@ mod tests {
     fn frames_plates_and_studs() {
         let mut fs = FramingSolver::new();
         let members = fs.frame(AssemblyKind::Wall, &wall(3840), &[], &rules());
-        let plates = members.iter().filter(|m| m.role == "plate").count();
-        let studs = members.iter().filter(|m| m.role == "stud").count();
+        let plates = members
+            .iter()
+            .filter(|m| m.role == FramingRole::Plate)
+            .count();
+        let studs = members
+            .iter()
+            .filter(|m| m.role == FramingRole::Stud)
+            .count();
         assert_eq!(plates, 3); // 1 bottom + 2 top
         // 10ft wall @ 16in OC: studs at 0,512,…,4608 (<3840 gives 0..3584 = 8) + end stud.
         assert!(studs >= 8);
         // stud length = 96in - 3 plates*1.5in = 96 - 4.5 = 91.5in = 2928 ticks.
-        let a_stud = members.iter().find(|m| m.role == "stud").unwrap();
+        let a_stud = members
+            .iter()
+            .find(|m| m.role == FramingRole::Stud)
+            .unwrap();
         assert_eq!(a_stud.length, Tick(96 * 32 - 3 * 48));
     }
 
@@ -366,7 +390,7 @@ mod tests {
         let before: Vec<i32> = fs
             .frame(AssemblyKind::Wall, &wall(3840), &[], &rules())
             .iter()
-            .filter(|m| m.role == "stud")
+            .filter(|m| m.role == FramingRole::Stud)
             .map(|m| m.transform.origin.x.raw())
             .collect();
         // Nudge the wall 2in (64 ticks) longer; interior grid positions must be unchanged.
@@ -374,7 +398,7 @@ mod tests {
         let after: Vec<i32> = fs2
             .frame(AssemblyKind::Wall, &wall(3840 + 64), &[], &rules())
             .iter()
-            .filter(|m| m.role == "stud")
+            .filter(|m| m.role == FramingRole::Stud)
             .map(|m| m.transform.origin.x.raw())
             .collect();
         // Every anchored interior stud (all but the moved end stud) is shared.
@@ -398,12 +422,15 @@ mod tests {
         });
         let mut fs = FramingSolver::new();
         let m = fs.frame(AssemblyKind::Wall, &w, &[], &rules());
-        assert_eq!(m.iter().filter(|x| x.role == "king").count(), 2);
-        assert_eq!(m.iter().filter(|x| x.role == "header").count(), 1);
-        assert_eq!(m.iter().filter(|x| x.role == "sill").count(), 1);
-        assert!(m.iter().any(|x| x.role == "cripple"));
+        assert_eq!(m.iter().filter(|x| x.role == FramingRole::King).count(), 2);
+        assert_eq!(
+            m.iter().filter(|x| x.role == FramingRole::Header).count(),
+            1
+        );
+        assert_eq!(m.iter().filter(|x| x.role == FramingRole::Sill).count(), 1);
+        assert!(m.iter().any(|x| x.role == FramingRole::Cripple));
         // No regular stud lands inside the opening span.
-        let inside = m.iter().filter(|x| x.role == "stud").any(|x| {
+        let inside = m.iter().filter(|x| x.role == FramingRole::Stud).any(|x| {
             let xx = x.transform.origin.x.raw();
             xx > 32 * 48 && xx < 32 * 48 + 32 * 36
         });
@@ -425,13 +452,19 @@ mod tests {
             std::slice::from_ref(&j),
             &rules(),
         );
-        assert_eq!(owner.iter().filter(|m| m.role == "post").count(), 3);
+        assert_eq!(
+            owner.iter().filter(|m| m.role == FramingRole::Post).count(),
+            3
+        );
 
         // A non-owner wall sees the same junction but frames no posts.
         let mut w2 = wall(3840);
         w2.id = WallId(2);
         let mut fs2 = FramingSolver::new();
         let other = fs2.frame(AssemblyKind::Wall, &w2, std::slice::from_ref(&j), &rules());
-        assert_eq!(other.iter().filter(|m| m.role == "post").count(), 0);
+        assert_eq!(
+            other.iter().filter(|m| m.role == FramingRole::Post).count(),
+            0
+        );
     }
 }
