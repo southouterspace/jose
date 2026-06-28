@@ -1,0 +1,16 @@
+[package]
+name = "estimating"
+version = "0.0.0"
+description = "Estimating & Cost context: bottom-up takeoff -> cost-coded, marked-up Estimate (every dollar traced to a domain object) validated top-down through the CostBenchmark seam."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+geometry-kernel = { path = "../geometry-kernel" }
+materials = { path = "../materials" }
+building = { path = "../building" }
+cut-optimization = { path = "../cut-optimization" }

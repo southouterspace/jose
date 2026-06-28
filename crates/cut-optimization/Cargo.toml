@@ -1,0 +1,15 @@
+[package]
+name = "cut-optimization"
+version = "0.0.0"
+description = "Cut & Optimization context: the 1D cutting-stock / offcut tracer — Demand[] in, a kerf-aware CutPlan (assignments + buy-list + waste/quantity/cost rollups) out, gated to stockForm=linear."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+geometry-kernel = { path = "../geometry-kernel" }
+materials = { path = "../materials" }
+building = { path = "../building" }
