@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ToolRunner, DEFAULT_SETTINGS, TOOL_CATALOG } from "./index";
+import { DEFAULT_SETTINGS, TOOL_CATALOG, ToolRunner } from "./index";
 
 test("the wall tool emits a DrawWall command on the second pick", () => {
   const runner = new ToolRunner();

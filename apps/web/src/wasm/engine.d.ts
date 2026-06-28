@@ -17,7 +17,7 @@ declare module "*/bim_wasm.js" {
       x1: number,
       y1: number,
       height: number,
-      spacingInches: number,
+      spacingInches: number
     ): number;
     /** Live member count. */
     memberCount(): number;

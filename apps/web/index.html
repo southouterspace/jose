@@ -1,42 +1,42 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta charset="utf-8">
+    <meta content="width=device-width, initial-scale=1" name="viewport">
     <title>jose — parametric framing (Phase 4 slice)</title>
     <style>
-      :root {
-        color-scheme: dark;
-        font-family: system-ui, sans-serif;
-      }
-      body {
-        margin: 0;
-        background: #1b1b1f;
-        color: #e8e8ea;
-        display: flex;
-        flex-direction: column;
-        height: 100vh;
-      }
-      header {
-        padding: 0.75rem 1rem;
-        border-bottom: 1px solid #333;
-      }
-      header h1 {
-        font-size: 1rem;
-        margin: 0;
-        font-weight: 600;
-      }
-      #status {
-        font-size: 0.85rem;
-        color: #9aa;
-        margin-top: 0.25rem;
-      }
-      #scene {
-        flex: 1;
-        width: 100%;
-        background: #232328;
-        touch-action: none;
-      }
+    :root {
+      font-family: system-ui, sans-serif;
+      color-scheme: dark;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      margin: 0;
+      color: #e8e8ea;
+      background: #1b1b1f;
+    }
+    header {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid #333;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+    #status {
+      margin-top: 0.25rem;
+      font-size: 0.85rem;
+      color: #9aa;
+    }
+    #scene {
+      flex: 1;
+      width: 100%;
+      touch-action: none;
+      background: #232328;
+    }
     </style>
   </head>
   <body>
@@ -44,7 +44,7 @@
       <h1>Parametric framing — draw → recompute → render</h1>
       <div id="status">Loading engine…</div>
     </header>
-    <canvas id="scene" width="1200" height="700"></canvas>
-    <script type="module" src="./dist/main.js"></script>
+    <canvas height="700" id="scene" width="1200"></canvas>
+    <script src="./dist/main.js" type="module"></script>
   </body>
 </html>

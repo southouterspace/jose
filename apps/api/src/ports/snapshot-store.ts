@@ -13,30 +13,30 @@
  * stale read is caught at load, not at runtime corruption.
  */
 export interface SnapshotEnvelope {
+  /** ISO-8601 creation timestamp. */
+  readonly createdAt: string;
   /** Stable snapshot id (UUID). */
   readonly id: string;
+  /** The BufferLayout keystone hash at production time — the cross-language drift guard. */
+  readonly layoutHash: string;
+  /** The domain MODEL version the payload was produced under (e.g. `1.0.1`). */
+  readonly modelVersion: string;
+  /** The serialized domain snapshot — opaque to persistence. */
+  readonly payload: unknown;
   /** The project/model this snapshot belongs to. */
   readonly projectId: string;
   /** Optimistic-lock revision; a re-solve or re-quote bumps it. */
   readonly revision: number;
-  /** The domain MODEL version the payload was produced under (e.g. `1.0.1`). */
-  readonly modelVersion: string;
-  /** The BufferLayout keystone hash at production time — the cross-language drift guard. */
-  readonly layoutHash: string;
-  /** ISO-8601 creation timestamp. */
-  readonly createdAt: string;
-  /** The serialized domain snapshot — opaque to persistence. */
-  readonly payload: unknown;
 }
 
 /** The persistence port: save, load, and list versioned snapshots. */
 export interface SnapshotStore {
-  /** Persist a snapshot (insert or replace by id). */
-  save(snapshot: SnapshotEnvelope): Promise<void>;
-  /** Load a snapshot by id, or `undefined` if unknown. */
-  load(id: string): Promise<SnapshotEnvelope | undefined>;
   /** List a project's snapshots, newest revision first. */
   listByProject(projectId: string): Promise<readonly SnapshotEnvelope[]>;
+  /** Load a snapshot by id, or `undefined` if unknown. */
+  load(id: string): Promise<SnapshotEnvelope | undefined>;
+  /** Persist a snapshot (insert or replace by id). */
+  save(snapshot: SnapshotEnvelope): Promise<void>;
 }
 
 /**

@@ -12,8 +12,11 @@ Bun.serve({
   async fetch(request) {
     const url = new URL(request.url);
     const path = url.pathname === "/" ? "/index.html" : url.pathname;
-    const file = Bun.file(ROOT + path.replace(/^\//, ""));
-    if (await file.exists()) return new Response(file);
+    // url.pathname always starts with "/"; strip it to resolve under ROOT.
+    const file = Bun.file(ROOT + path.slice(1));
+    if (await file.exists()) {
+      return new Response(file);
+    }
     return new Response("not found", { status: 404 });
   },
 });

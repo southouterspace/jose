@@ -16,17 +16,21 @@ export interface Blob {
 
 /** The blob-storage port: put and get bytes by key (an R2 object key). */
 export interface BlobStore {
-  /** Store `body` under `key`, replacing any existing object. */
-  put(key: string, body: Uint8Array, contentType?: string): Promise<void>;
   /** Fetch the blob at `key`, or `undefined` if absent. */
   get(key: string): Promise<Blob | undefined>;
+  /** Store `body` under `key`, replacing any existing object. */
+  put(key: string, body: Uint8Array, contentType?: string): Promise<void>;
 }
 
 /** An in-process {@link BlobStore} — the default until an R2 bucket is configured. */
 export class InMemoryBlobStore implements BlobStore {
   readonly #byKey = new Map<string, Blob>();
 
-  put(key: string, body: Uint8Array, contentType = "application/octet-stream"): Promise<void> {
+  put(
+    key: string,
+    body: Uint8Array,
+    contentType = "application/octet-stream"
+  ): Promise<void> {
     this.#byKey.set(key, { body, contentType });
     return Promise.resolve();
   }

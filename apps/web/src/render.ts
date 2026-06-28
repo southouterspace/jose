@@ -17,12 +17,17 @@ const ROLE_COLORS: Record<string, string> = {
   post: "#6b4423",
 };
 
-export function renderMembers(ctx: CanvasRenderingContext2D, mirror: MemberMirror): void {
+export function renderMembers(
+  ctx: CanvasRenderingContext2D,
+  mirror: MemberMirror
+): void {
   const { canvas } = ctx;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   const rows = mirror.rows();
-  if (rows.length === 0) return;
+  if (rows.length === 0) {
+    return;
+  }
 
   // Fit the wall-local elevation (x along the baseline, z up) into the canvas.
   let maxX = 1;
@@ -32,7 +37,10 @@ export function renderMembers(ctx: CanvasRenderingContext2D, mirror: MemberMirro
     maxZ = Math.max(maxZ, r.z0, r.z1);
   }
   const margin = 48;
-  const scale = Math.min((canvas.width - 2 * margin) / maxX, (canvas.height - 2 * margin) / maxZ);
+  const scale = Math.min(
+    (canvas.width - 2 * margin) / maxX,
+    (canvas.height - 2 * margin) / maxZ
+  );
   const toX = (x: number): number => margin + x * scale;
   const toY = (z: number): number => canvas.height - margin - z * scale; // z up
 

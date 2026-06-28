@@ -14,7 +14,7 @@
     "@jose/model-types": "workspace:*"
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "typescript": "^5.7.0"
+    "@types/bun": "catalog:",
+    "typescript": "catalog:"
   }
 }

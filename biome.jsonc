@@ -1,0 +1,43 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "extends": ["ultracite/biome/core"],
+  // Biome resolves globals by name only (it does not read @types/bun), so the
+  // Bun runtime global must be declared explicitly or noUndeclaredVariables fires.
+  "javascript": {
+    "globals": ["Bun"]
+  },
+  "overrides": [
+    {
+      // Hand-authored, non-source data: docs/*.html are deliverable artifacts
+      // (the rendered schema/reference), and schema/ is the single source of
+      // truth the codegen reads. Biome should neither reformat nor lint these —
+      // formatting schema/ in particular would churn thousands of lines for no
+      // gain, and codegen + tests already validate it.
+      "includes": ["docs/**", "schema/**"],
+      "formatter": { "enabled": false },
+      "linter": { "enabled": false },
+      "assist": { "enabled": false }
+    },
+    {
+      // Workspace package entrypoints are intentional public-API barrels.
+      "includes": ["packages/*/src/index.ts"],
+      "linter": {
+        "rules": {
+          "performance": { "noBarrelFile": "off" }
+        }
+      }
+    },
+    {
+      // Test fixtures: regex hoisting (perf) and non-null assertions on known
+      // fixture data are low-value to enforce here — mirrors Ultracite's own
+      // relaxation of noConsole/noExplicitAny in tests.
+      "includes": ["**/*.{test,spec}.{ts,tsx,js,jsx}", "**/__tests__/**/*"],
+      "linter": {
+        "rules": {
+          "performance": { "useTopLevelRegex": "off" },
+          "style": { "noNonNullAssertion": "off" }
+        }
+      }
+    }
+  ]
+}

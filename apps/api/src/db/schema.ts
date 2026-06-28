@@ -8,7 +8,14 @@
  * it does not model the domain.
  */
 
-import { integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 /** A project/model the estimates and snapshots belong to. */
 export const projects = pgTable("projects", {
@@ -17,7 +24,9 @@ export const projects = pgTable("projects", {
   /** Human name, e.g. "Smith Residence". */
   name: text("name").notNull(),
   /** Creation timestamp. */
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });
 
 /**
@@ -41,7 +50,9 @@ export const estimateSnapshots = pgTable("estimate_snapshots", {
   /** The serialized domain snapshot. */
   payload: jsonb("payload").notNull(),
   /** Creation timestamp. */
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });
 
 /** A row read out of {@link projects}. */

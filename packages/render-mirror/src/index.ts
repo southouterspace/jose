@@ -10,16 +10,17 @@
  */
 import {
   BUFFER_LAYOUTS,
-  LAYOUT_HASH,
   type BufferColumn,
   type BufferLayout,
+  LAYOUT_HASH,
 } from "@jose/model-types";
 
-export { LAYOUT_HASH };
-export type { BufferColumn, BufferLayout };
+export type { BufferColumn, BufferLayout } from "@jose/model-types";
+export { LAYOUT_HASH } from "@jose/model-types";
 
 /** The generated layout for the `MemberPlacement` SoA buffer (the first end-to-end slice). */
-export const MEMBER_PLACEMENT_LAYOUT: BufferLayout = BUFFER_LAYOUTS.MemberPlacement;
+export const MEMBER_PLACEMENT_LAYOUT: BufferLayout =
+  BUFFER_LAYOUTS.MemberPlacement;
 
 /** Framing-role vocabulary, indexed by the `roleId` column. */
 export const MEMBER_ROLES: readonly string[] = MEMBER_PLACEMENT_LAYOUT.roles;
@@ -33,29 +34,33 @@ export function assertLayout(engineLayoutHash: string): void {
   if (engineLayoutHash !== LAYOUT_HASH) {
     throw new Error(
       `BufferLayout mismatch: engine reports "${engineLayoutHash}" but render-mirror was generated ` +
-        `against "${LAYOUT_HASH}". Rebuild the wasm engine and run \`bun run codegen\`.`,
+        `against "${LAYOUT_HASH}". Rebuild the wasm engine and run \`bun run codegen\`.`
     );
   }
 }
 
 /** One decoded member: a wall-local elevation segment (ticks), a draw width, and its role. */
 export interface MemberRow {
-  readonly x0: number;
-  readonly y0: number;
-  readonly z0: number;
-  readonly x1: number;
-  readonly y1: number;
-  readonly z1: number;
-  readonly width: number;
-  readonly roleId: number;
   readonly role: string;
+  readonly roleId: number;
+  readonly width: number;
+  readonly x0: number;
+  readonly x1: number;
+  readonly y0: number;
+  readonly y1: number;
+  readonly z0: number;
+  readonly z1: number;
 }
 
 type Int32Field = "x0" | "y0" | "z0" | "x1" | "y1" | "z1" | "width";
 
 function column(layout: BufferLayout, field: string): BufferColumn {
   const col = layout.columns.find((c) => c.field === field);
-  if (!col) throw new Error(`render-mirror: no column "${field}" in ${layout.domainType} layout`);
+  if (!col) {
+    throw new Error(
+      `render-mirror: no column "${field}" in ${layout.domainType} layout`
+    );
+  }
   return col;
 }
 
@@ -79,16 +84,22 @@ export class MemberMirror {
     const need = byteOffset + this.layout.bufferBytes;
     if (buffer.byteLength < need) {
       throw new Error(
-        `render-mirror: buffer too small (${buffer.byteLength} bytes, need ${need} for ${this.layout.domainType})`,
+        `render-mirror: buffer too small (${buffer.byteLength} bytes, need ${need} for ${this.layout.domainType})`
       );
     }
     if (count < 0 || count > this.layout.capacity) {
-      throw new Error(`render-mirror: count ${count} out of range [0, ${this.layout.capacity}]`);
+      throw new Error(
+        `render-mirror: count ${count} out of range [0, ${this.layout.capacity}]`
+      );
     }
     this.count = count;
     const cap = this.layout.capacity;
     const i32 = (field: Int32Field): Int32Array =>
-      new Int32Array(buffer, byteOffset + column(this.layout, field).byteOffset, cap);
+      new Int32Array(
+        buffer,
+        byteOffset + column(this.layout, field).byteOffset,
+        cap
+      );
     this.i32 = {
       x0: i32("x0"),
       y0: i32("y0"),
@@ -98,7 +109,11 @@ export class MemberMirror {
       z1: i32("z1"),
       width: i32("width"),
     };
-    this.roleIds = new Uint32Array(buffer, byteOffset + column(this.layout, "roleId").byteOffset, cap);
+    this.roleIds = new Uint32Array(
+      buffer,
+      byteOffset + column(this.layout, "roleId").byteOffset,
+      cap
+    );
   }
 
   /** Resolve a roleId to its role string (empty string if out of vocabulary). */
@@ -108,7 +123,9 @@ export class MemberMirror {
 
   /** Decode row `i` (0 ≤ i < count). */
   row(i: number): MemberRow {
-    if (i < 0 || i >= this.count) throw new RangeError(`render-mirror: row ${i} out of [0, ${this.count})`);
+    if (i < 0 || i >= this.count) {
+      throw new RangeError(`render-mirror: row ${i} out of [0, ${this.count})`);
+    }
     const roleId = this.roleIds[i] ?? 0;
     return {
       x0: this.i32.x0[i] ?? 0,
@@ -126,7 +143,9 @@ export class MemberMirror {
   /** All live rows, in buffer order. */
   rows(): MemberRow[] {
     const out: MemberRow[] = [];
-    for (let i = 0; i < this.count; i++) out.push(this.row(i));
+    for (let i = 0; i < this.count; i++) {
+      out.push(this.row(i));
+    }
     return out;
   }
 }
