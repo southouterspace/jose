@@ -22,6 +22,9 @@ declare module "*/bim_wasm.js" {
     /** Channel A: draw/redraw the current space's footprint from a closed ring of plan vertices
      *  (parallel tick columns); returns the live member count. */
     drawFootprint(xs: Int32Array, ys: Int32Array): number;
+    /** Channel A: push/pull a volume's face (the 3D top-cap gesture) by a signed tick distance;
+     *  returns the live volume count. */
+    pushPull(volumeId: number, faceIndex: number, distance: number): number;
     /** Live member count. */
     memberCount(): number;
     /** Live footprint vertex count. */
