@@ -1,0 +1,17 @@
+[package]
+name = "design-standard"
+version = "0.0.0"
+description = "Structural — the DesignStandard Strategy seam: one material-blind check stage (SizingArbiter/BeamStatics) with N material leaves behind a single interface."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+geometry-kernel = { path = "../geometry-kernel" }
+reference-data = { path = "../reference-data" }
+materials = { path = "../materials" }
+loads-analysis = { path = "../loads-analysis" }
+building = { path = "../building" }

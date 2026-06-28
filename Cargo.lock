@@ -3,8 +3,45 @@
 version = 4
 
 [[package]]
+name = "building"
+version = "0.0.0"
+dependencies = [
+ "geometry-kernel",
+ "materials",
+]
+
+[[package]]
+name = "design-standard"
+version = "0.0.0"
+dependencies = [
+ "building",
+ "geometry-kernel",
+ "loads-analysis",
+ "materials",
+ "reference-data",
+]
+
+[[package]]
 name = "geometry-kernel"
 version = "0.0.0"
+
+[[package]]
+name = "loads-analysis"
+version = "0.0.0"
+dependencies = [
+ "building",
+ "geometry-kernel",
+ "materials",
+ "reference-data",
+]
+
+[[package]]
+name = "materials"
+version = "0.0.0"
+dependencies = [
+ "geometry-kernel",
+ "reference-data",
+]
 
 [[package]]
 name = "reference-data"

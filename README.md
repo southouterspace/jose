@@ -4,8 +4,10 @@ A constrained BIM engine for parametric residential framing — a Rust/WASM comp
 ("brain") and a TypeScript frontend ("hands & eyes"), kept honest by a single domain MODEL
 that generates the shared `BufferLayout`.
 
-The repository is mid-scaffold: the **design schema is complete**, and the **monorepo
-spine** (workspaces + codegen) has landed. Domain crates and apps land next, per the plan.
+The repository is mid-scaffold: the **design schema is complete**, the **monorepo spine**
+(workspaces + codegen) and **shared kernels** have landed, and the **four core domain
+contexts** (`materials`, `building`, `loads-analysis`, `design-standard`) are now in place.
+The wasm boundary, frontend packages, and apps land next, per the plan.
 
 ## Layout
 

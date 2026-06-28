@@ -276,8 +276,17 @@ The repo is docs-only today; the scaffold lands incrementally so `main` is alway
    flyweights, and the `Registry`/`Flyweight` pattern) — pure-domain, zero-dependency, 34
    tests. Registered in the Cargo workspace, which activates the full Rust CI checks
    (fmt + clippy `-D warnings` + test).
-3. **Core contexts.** `materials` → `building` → `loads-analysis` → `design-standard`
-   (the seam), in pipeline order, each behind its facade.
+3. **Core contexts.** ✅ **Landed.** `materials` (Stock/StockSpec, Dimensions/SectionProperties,
+   the Piece/Cut/WasteRecord/QuantityTakeoff provenance chain, Weight, ConnectionPoint, the
+   SupplierSku/PriceQuote/PriceTier catalog) → `building` (Wall/Opening/Junction promotion,
+   MemberPlacement + install context, Floor/Roof/Sheathing stubs, and a grid-anchored
+   `FramingSolver`) → `loads-analysis` (the ASCE 7 sources, TributaryArea, LoadPath/LoadRollup,
+   LoadCombination, MemberDemand, and `LoadSolver`) → `design-standard` (the `DesignStandard`
+   Strategy seam: material-blind `SizingArbiter`/`BeamStatics` core + a fully-populated NDS wood
+   leaf and AISI/AISC/ACI/TMS stubs), in pipeline order, each behind its facade. Internal layout
+   and the loads↔design-standard cycle break are recorded in
+   [ADR 0002](../adr/0002-core-context-crate-layout-and-dependency-direction.md). 58 new tests;
+   full `fmt` + `clippy -D warnings` + `test` green across the workspace.
 4. **Boundary + frontend.** `bim-wasm` + `packages/{model-types,render-mirror,tool-runner}`
    + `apps/web` — first end-to-end slice (draw → recompute → render).
 5. **Supporting + backend.** `cut-optimization`, `estimating`, `drawings-export`,
