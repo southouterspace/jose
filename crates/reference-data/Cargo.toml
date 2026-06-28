@@ -1,0 +1,12 @@
+[package]
+name = "reference-data"
+version = "0.0.0"
+description = "Shared flyweights: intrinsic, looked-up-by-key catalog data (design values, citations, code provisions)."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]

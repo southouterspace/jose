@@ -1,0 +1,12 @@
+[package]
+name = "geometry-kernel"
+version = "0.0.0"
+description = "Shared geometry primitives: the tick base-unit vocabulary and cross-context geometry types."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]

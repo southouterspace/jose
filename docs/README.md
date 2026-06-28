@@ -6,7 +6,9 @@ Design documentation for the parametric residential framing engine. Organized by
 docs/
 ├── schema/      current deliverable — the unified domain model
 ├── analysis/    the cross-schema audit that produced it
-└── reference/   still-active bibliography (referenced, not duplicated)
+├── reference/   still-active bibliography (referenced, not duplicated)
+├── plans/       forward-looking plans (repo scaffold, rollout)
+└── adr/         architecture decision records
 ```
 
 ## schema/ — current
@@ -14,7 +16,8 @@ docs/
 | File | What it is |
 |---|---|
 | [`unified-schema.html`](schema/unified-schema.html) | **The deliverable.** One cohesive, future-proof schema — 12 layers, 178 types, 10-stage pipeline. Renders human cards + a machine-readable MODEL in the shared visual language. Includes migration map, alias table, changelog, and resolved/open decisions. **v1.0.1.** |
-| [`unified-model.json`](schema/unified-model.json) | The standalone machine contract (the MODEL object), for codegen / tooling. |
+
+> The machine contract (the MODEL object, for codegen / tooling) now lives at [`schema/model/unified-model.json`](../schema/model/unified-model.json) — promoted out of `docs/` so it's a real build input. This `docs/schema/` directory keeps the human-readable rendering only.
 
 Consolidates the six prior artifacts; designed for two forward requirements — **additional material types** (via the `DesignStandard` Strategy seam + open registry keys) and **project estimating / cost** (the `estimating-cost` layer).
 
@@ -23,13 +26,26 @@ Consolidates the six prior artifacts; designed for two forward requirements — 
 | File | What it is |
 |---|---|
 | [`cross-schema-analysis.md`](analysis/cross-schema-analysis.md) | Deep cross-schema architecture analysis, findings ranked by severity (S1→S3), with the recommended order of operations. The blueprint the unified schema was built from. |
-| [`type-registry.json`](analysis/type-registry.json) | Machine-readable type-ownership registry: every type → canonical home → cross-refs, plus collisions, dangling refs, base-unit audit, and pipeline coherence. |
+
+> The type-ownership registry (every type → canonical home → cross-refs, plus collisions, dangling refs, base-unit audit) now lives at [`schema/registry/type-registry.json`](../schema/registry/type-registry.json) — promoted alongside the MODEL as a build input.
 
 ## reference/ — still active
 
 | File | What it is |
 |---|---|
 | [`reference-library.html`](reference/reference-library.html) | 23 building-science titles + a `subjectIndex` mapping modeling subjects → `{book, anchor, note}`. The unified schema *references* this (via `CitationKey`); it was not absorbed, so it stays live. |
+
+## plans/ — forward-looking
+
+| File | What it is |
+|---|---|
+| [`repo-scaffold.md`](plans/repo-scaffold.md) | DDD monorepo scaffold: maps the 12 schema layers → bounded contexts, defines the Rust-engine / TS-frontend split, the MODEL→codegen spine, naming/boundary conventions, tidiness governance, and a phased rollout. **Phase 1 (skeleton + spine) landed.** |
+
+## adr/ — decisions
+
+| File | What it is |
+|---|---|
+| [`0001-monorepo-tooling-and-layout.md`](adr/0001-monorepo-tooling-and-layout.md) | Accepted: Bun + Cargo + Turborepo; backend in-repo; `crates/`+`packages/`+`apps/` split; codegen as the drift-checked spine. |
 
 ## Provenance — the five superseded source artifacts
 

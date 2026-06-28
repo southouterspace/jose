@@ -1,0 +1,28 @@
+# Rust workspace root (virtual manifest).
+#
+# Domain-context crates land in Phase 2+ of docs/plans/repo-scaffold.md:
+#   crates/geometry-kernel, crates/reference-data, crates/materials, ...
+# Phase 1 is the spine only, so the member list is intentionally empty.
+[workspace]
+resolver = "3"
+members = [
+    "crates/geometry-kernel",
+    "crates/reference-data",
+]
+
+[workspace.package]
+edition = "2024"
+license = "UNLICENSED"
+publish = false
+
+# Shared lints, inherited by every crate via `[lints] workspace = true`.
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

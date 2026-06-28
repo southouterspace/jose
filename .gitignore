@@ -1,0 +1,18 @@
+# Rust
+/target
+**/*.rs.bk
+
+# JS / Bun
+node_modules
+dist
+.turbo
+*.tsbuildinfo
+
+# Bun keeps a binary lockfile; track it, ignore the text mirror cache
+bun.lockb.tmp
+
+# Editor / OS
+.DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json
