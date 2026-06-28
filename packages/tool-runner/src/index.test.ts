@@ -37,8 +37,12 @@ test("configure changes the value grammar applied to the next commit", () => {
   runner.configure({ spacingInches: 19.2, wallHeightTicks: 9 * 384 });
   runner.pick({ x: 0, y: 0 });
   const command = runner.pick({ x: 3840, y: 0 });
-  expect(command?.spacingInches).toBe(19.2);
-  expect(command?.height).toBe(9 * 384);
+  expect(command?.kind).toBe("drawWall");
+  if (command?.kind !== "drawWall") {
+    throw new Error("expected a drawWall command");
+  }
+  expect(command.spacingInches).toBe(19.2);
+  expect(command.height).toBe(9 * 384);
 });
 
 test("cancel clears an in-progress operation", () => {
@@ -53,4 +57,67 @@ test("activating an unknown tool throws", () => {
   const runner = new ToolRunner();
   expect(() => runner.activate("nope")).toThrow(/unknown tool/);
   expect(TOOL_CATALOG.wall?.picks).toBe(2);
+});
+
+test("the footprint tool emits no command until the ring closes", () => {
+  const runner = new ToolRunner();
+  runner.activate("footprint");
+  expect(runner.activeKey).toBe("footprint");
+
+  // A 10ft x 8ft rectangle (ticks: 1ft = 384).
+  expect(runner.pick({ x: 0, y: 0 })).toBeNull();
+  expect(runner.pick({ x: 3840, y: 0 })).toBeNull();
+  expect(runner.pick({ x: 3840, y: 3072 })).toBeNull();
+  expect(runner.pick({ x: 0, y: 3072 })).toBeNull();
+  expect(runner.pendingPicks).toHaveLength(4);
+
+  // Clicking back near the first vertex (≥3 points down) closes the ring.
+  const command = runner.pick({ x: 0, y: 0 });
+  expect(command).toEqual({
+    kind: "drawFootprint",
+    xs: [0, 3840, 3840, 0],
+    ys: [0, 0, 3072, 3072],
+  });
+  // Resets for the next operation; the closing click is not re-committed as a vertex.
+  expect(runner.pendingPicks).toHaveLength(0);
+});
+
+test("the footprint closes on a click within the snap threshold of the first vertex", () => {
+  const runner = new ToolRunner();
+  runner.activate("footprint");
+  runner.pick({ x: 0, y: 0 });
+  runner.pick({ x: 3840, y: 0 });
+  runner.pick({ x: 3840, y: 3072 });
+  // A near-but-not-exact closing click snaps onto the first vertex.
+  const command = runner.pick({ x: 20, y: -16 });
+  expect(command).not.toBeNull();
+  expect(command).toEqual({
+    kind: "drawFootprint",
+    xs: [0, 3840, 3840],
+    ys: [0, 0, 3072],
+  });
+});
+
+test("a near-first click with fewer than 3 points does not close (it is a new vertex)", () => {
+  const runner = new ToolRunner();
+  runner.activate("footprint");
+  runner.pick({ x: 0, y: 0 });
+  // Only 2 points so far: clicking near the first is just the 3rd vertex, no command.
+  expect(runner.pick({ x: 16, y: 0 })).toBeNull();
+  expect(runner.pendingPicks).toHaveLength(2);
+});
+
+test("footprint picks snap to the tick grid", () => {
+  const runner = new ToolRunner();
+  runner.activate("footprint");
+  runner.pick({ x: 33, y: 48 });
+  expect(runner.pendingPicks[0]).toEqual({ x: 32, y: 64 });
+});
+
+test("activating the footprint tool clears any in-progress wall operation", () => {
+  const runner = new ToolRunner();
+  runner.pick({ x: 100, y: 100 });
+  runner.activate("footprint");
+  expect(runner.pendingPicks).toHaveLength(0);
+  expect(TOOL_CATALOG.footprint?.key).toBe("footprint");
 });

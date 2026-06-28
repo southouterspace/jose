@@ -43,5 +43,26 @@ self.onmessage = async (event: MessageEvent<EngineRequest>): Promise<void> => {
     postMessage({ kind: "members", count, buffer } satisfies EngineResponse, [
       buffer,
     ]);
+    return;
+  }
+
+  if (request.kind === "drawFootprint") {
+    engine.drawFootprint(
+      Int32Array.from(request.xs),
+      Int32Array.from(request.ys)
+    );
+    // One recompute, both space buffers (ADR 0008 §5). Transfer each snapshot's backing buffer.
+    const footprintBuffer = engine.footprintSnapshot().buffer as ArrayBuffer;
+    const volumeBuffer = engine.volumeSnapshot().buffer as ArrayBuffer;
+    postMessage(
+      {
+        kind: "space",
+        footprintCount: engine.footprintCount(),
+        footprintBuffer,
+        volumeCount: engine.volumeCount(),
+        volumeBuffer,
+      } satisfies EngineResponse,
+      [footprintBuffer, volumeBuffer]
+    );
   }
 };

@@ -15,6 +15,13 @@ export type EngineRequest =
       readonly y1: number;
       readonly height: number;
       readonly spacingInches: number;
+    }
+  | {
+      /** Draw/redraw the current space's footprint from a closed ring of plan vertices (ticks).
+       *  `xs`/`ys` are parallel columns; the closing edge is implicit. */
+      readonly kind: "drawFootprint";
+      readonly xs: readonly number[];
+      readonly ys: readonly number[];
     };
 
 /** Channel B + acks (worker → main thread). */
@@ -24,4 +31,13 @@ export type EngineResponse =
       readonly kind: "members";
       readonly count: number;
       readonly buffer: ArrayBuffer;
+    }
+  | {
+      /** One recompute, both space buffers: footprint vertices + the extruded volume (ADR 0008 §5).
+       *  Each `buffer` is the canonical SoA snapshot bytes; the `*Count`s bound the live rows. */
+      readonly kind: "space";
+      readonly footprintCount: number;
+      readonly footprintBuffer: ArrayBuffer;
+      readonly volumeCount: number;
+      readonly volumeBuffer: ArrayBuffer;
     };
