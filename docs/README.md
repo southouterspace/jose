@@ -39,7 +39,7 @@ Consolidates the six prior artifacts; designed for two forward requirements — 
 
 | File | What it is |
 |---|---|
-| [`repo-scaffold.md`](plans/repo-scaffold.md) | DDD monorepo scaffold: maps the 12 schema layers → bounded contexts, defines the Rust-engine / TS-frontend split, the MODEL→codegen spine, naming/boundary conventions, tidiness governance, and a phased rollout. **Phases 1–4 landed** (skeleton + spine, shared kernels, core contexts, the wasm boundary + frontend slice). |
+| [`repo-scaffold.md`](plans/repo-scaffold.md) | DDD monorepo scaffold: maps the 12 schema layers → bounded contexts, defines the Rust-engine / TS-frontend split, the MODEL→codegen spine, naming/boundary conventions, tidiness governance, and a phased rollout. **All five phases landed** (skeleton + spine, shared kernels, core contexts, the wasm boundary + frontend slice, the supporting contexts + persistence backend). |
 
 ## adr/ — decisions
 
@@ -48,6 +48,7 @@ Consolidates the six prior artifacts; designed for two forward requirements — 
 | [`0001-monorepo-tooling-and-layout.md`](adr/0001-monorepo-tooling-and-layout.md) | Accepted: Bun + Cargo + Turborepo; backend in-repo; `crates/`+`packages/`+`apps/` split; codegen as the drift-checked spine. |
 | [`0002-core-context-crate-layout-and-dependency-direction.md`](adr/0002-core-context-crate-layout-and-dependency-direction.md) | Accepted: hexagonal-as-deep-as-warranted crate layout; pipeline-order dependencies with downstream links held by opaque key (breaking the loads ↔ design-standard cycle). |
 | [`0003-wasm-boundary-and-the-buffer-layout-keystone.md`](adr/0003-wasm-boundary-and-the-buffer-layout-keystone.md) | Accepted: `bim-core` composition root; the `BufferLayout` generated to both Rust + TS from one spec with a shared `LAYOUT_HASH`; `bim-wasm` as the single `unsafe`-allowed FFI seam. |
+| [`0004-supporting-contexts-and-the-persistence-boundary.md`](adr/0004-supporting-contexts-and-the-persistence-boundary.md) | Accepted: the cut solver reads SKU facts through a `StockCatalog` port; `stockForm` is a typed gate not a branch; `CostBenchmark` is the cost-side Strategy seam; `apps/api` is a domain-orthogonal, `LAYOUT_HASH`-stamped snapshot boundary. |
 
 ## Provenance — the five superseded source artifacts
 

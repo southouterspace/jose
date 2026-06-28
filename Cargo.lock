@@ -40,6 +40,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
+name = "cut-optimization"
+version = "0.0.0"
+dependencies = [
+ "building",
+ "geometry-kernel",
+ "materials",
+]
+
+[[package]]
 name = "design-standard"
 version = "0.0.0"
 dependencies = [
@@ -48,6 +57,24 @@ dependencies = [
  "loads-analysis",
  "materials",
  "reference-data",
+]
+
+[[package]]
+name = "drawings-export"
+version = "0.0.0"
+dependencies = [
+ "geometry-kernel",
+ "reference-data",
+]
+
+[[package]]
+name = "estimating"
+version = "0.0.0"
+dependencies = [
+ "building",
+ "cut-optimization",
+ "geometry-kernel",
+ "materials",
 ]
 
 [[package]]

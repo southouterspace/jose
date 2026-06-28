@@ -4,7 +4,7 @@
 #   Phase 2 — geometry-kernel, reference-data (shared kernels)
 #   Phase 3 — materials, building, loads-analysis, design-standard (core contexts)
 #   Phase 4 — bim-core (composition root), bim-wasm (wasm-bindgen boundary)
-# The supporting/backend crates land in Phase 5.
+#   Phase 5 — cut-optimization, estimating, drawings-export (supporting contexts)
 [workspace]
 resolver = "3"
 members = [
@@ -14,6 +14,9 @@ members = [
     "crates/building",
     "crates/loads-analysis",
     "crates/design-standard",
+    "crates/cut-optimization",
+    "crates/estimating",
+    "crates/drawings-export",
     "crates/bim-core",
     "crates/bim-wasm",
 ]

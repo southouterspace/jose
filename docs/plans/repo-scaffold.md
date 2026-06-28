@@ -300,8 +300,20 @@ The repo is docs-only today; the scaffold lands incrementally so `main` is alway
    [ADR 0003](../adr/0003-wasm-boundary-and-the-buffer-layout-keystone.md). 18 new tests
    (Rust + Bun); `fmt` + `clippy -D warnings` + host & `wasm32` builds green, full TS typecheck
    green.
-5. **Supporting + backend.** `cut-optimization`, `estimating`, `drawings-export`,
-   `apps/api` (Neon/Drizzle, R2).
+5. **Supporting + backend.** ✅ **Landed.** The three supporting contexts —
+   `cut-optimization` (the FFD-plus-offcut-pool `CuttingStockSolver` behind a `StockCatalog`
+   port, gated to `stockForm=linear` by a typed `CutEligibility`, emitting the `CutPlan`
+   bottom-up handoff), `estimating` (the `TakeoffItem` traceability chain, the
+   `MaterialLine`/`ResourceLine`/`SubcontractLine` family, the deterministic `CostRollup`
+   markup/allowance stack, and the `CostBenchmark` top-down seam with an `RsMeansBenchmark`
+   leaf), and `drawings-export` (the Rust-side `Projection` + `HiddenLineRemoval` over the BREP,
+   composed into `Sheet`/`DrawingSet`) — each behind its facade, in pipeline order. Plus
+   `apps/api`: the domain-orthogonal persistence boundary (Hono on Bun/Workers, a Drizzle/Neon
+   snapshot schema + R2 blob port, snapshots stamped with the `LAYOUT_HASH` keystone and rejected
+   `409` when stale). Recorded in
+   [ADR 0004](../adr/0004-supporting-contexts-and-the-persistence-boundary.md). 42 new Rust tests
+   + 4 Bun tests; full `fmt` + `clippy -D warnings` + host & `wasm32` builds green, full TS
+   typecheck + codegen drift green.
 
 Existing docs stay where they are; `docs/schema/` content is *promoted* (copied, with a
 pointer left behind) into `schema/` so the machine contract becomes a real build input
