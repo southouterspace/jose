@@ -3,48 +3,10 @@
   <head>
     <meta charset="utf-8">
     <meta content="width=device-width, initial-scale=1" name="viewport">
-    <title>jose — parametric framing (Phase 4 slice)</title>
-    <style>
-    :root {
-      font-family: system-ui, sans-serif;
-      color-scheme: dark;
-    }
-    body {
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-      margin: 0;
-      color: #e8e8ea;
-      background: #1b1b1f;
-    }
-    header {
-      padding: 0.75rem 1rem;
-      border-bottom: 1px solid #333;
-    }
-    header h1 {
-      margin: 0;
-      font-size: 1rem;
-      font-weight: 600;
-    }
-    #status {
-      margin-top: 0.25rem;
-      font-size: 0.85rem;
-      color: #9aa;
-    }
-    #scene {
-      flex: 1;
-      width: 100%;
-      touch-action: none;
-      background: #232328;
-    }
-    </style>
+    <title>jose — parametric framing</title>
   </head>
   <body>
-    <header>
-      <h1>Parametric framing — draw → recompute → render</h1>
-      <div id="status">Loading engine…</div>
-    </header>
-    <canvas height="700" id="scene" width="1200"></canvas>
-    <script src="./dist/main.js" type="module"></script>
+    <div id="root"></div>
+    <script src="/src/main.tsx" type="module"></script>
   </body>
 </html>
