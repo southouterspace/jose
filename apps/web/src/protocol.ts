@@ -20,4 +20,8 @@ export type EngineRequest =
 /** Channel B + acks (worker → main thread). */
 export type EngineResponse =
   | { readonly kind: "ready"; readonly layoutHash: string }
-  | { readonly kind: "members"; readonly count: number; readonly buffer: ArrayBuffer };
+  | {
+      readonly kind: "members";
+      readonly count: number;
+      readonly buffer: ArrayBuffer;
+    };

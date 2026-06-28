@@ -5,22 +5,28 @@
  * intents in ([`EngineRequest`]), the SoA buffer snapshot out ([`EngineResponse`]). It holds no DOM
  * and does no rendering — it only recomputes and ships bytes.
  */
-import init, { Engine } from "./wasm/pkg/bim_wasm.js";
+
 import type { EngineRequest, EngineResponse } from "./protocol";
+import init, { Engine } from "./wasm/pkg/bim_wasm.js";
 
 let engine: Engine | null = null;
 
-onmessage = async (event: MessageEvent<EngineRequest>): Promise<void> => {
+self.onmessage = async (event: MessageEvent<EngineRequest>): Promise<void> => {
   const request = event.data;
 
   if (request.kind === "init") {
     await init();
     engine = new Engine();
-    postMessage({ kind: "ready", layoutHash: engine.layoutHash() } satisfies EngineResponse);
+    postMessage({
+      kind: "ready",
+      layoutHash: engine.layoutHash(),
+    } satisfies EngineResponse);
     return;
   }
 
-  if (!engine) throw new Error("engine-worker: received a command before init");
+  if (!engine) {
+    throw new Error("engine-worker: received a command before init");
+  }
 
   if (request.kind === "drawWall") {
     const count = engine.drawWall(
@@ -29,11 +35,13 @@ onmessage = async (event: MessageEvent<EngineRequest>): Promise<void> => {
       request.x1,
       request.y1,
       request.height,
-      request.spacingInches,
+      request.spacingInches
     );
     // Transfer the snapshot's backing buffer — zero-copy handoff of Channel B to the main thread.
     const bytes = engine.snapshot();
     const buffer = bytes.buffer as ArrayBuffer;
-    postMessage({ kind: "members", count, buffer } satisfies EngineResponse, [buffer]);
+    postMessage({ kind: "members", count, buffer } satisfies EngineResponse, [
+      buffer,
+    ]);
   }
 };

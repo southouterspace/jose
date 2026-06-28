@@ -6,8 +6,9 @@
  *
  * It never touches canonical geometry: it sends intents one way and reads back a read-only mirror.
  */
+
+import { assertLayout, MemberMirror } from "@jose/render-mirror";
 import { ToolRunner } from "@jose/tool-runner";
-import { MemberMirror, assertLayout } from "@jose/render-mirror";
 import type { EngineRequest, EngineResponse } from "./protocol";
 import { renderMembers } from "./render";
 
@@ -17,9 +18,13 @@ const INPUT_SCALE = 0.1;
 const canvas = document.getElementById("scene") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d");
 const status = document.getElementById("status");
-if (!ctx || !status) throw new Error("web: #scene canvas or #status element missing");
+if (!(ctx && status)) {
+  throw new Error("web: #scene canvas or #status element missing");
+}
 
-const worker = new Worker(new URL("./engine-worker.ts", import.meta.url), { type: "module" });
+const worker = new Worker(new URL("./engine-worker.ts", import.meta.url), {
+  type: "module",
+});
 const runner = new ToolRunner();
 
 worker.onmessage = (event: MessageEvent<EngineResponse>): void => {

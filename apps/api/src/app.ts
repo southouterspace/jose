@@ -5,33 +5,36 @@
  * No domain logic lives here.
  */
 
-import { Hono } from "hono";
 import { LAYOUT_HASH, MODEL_VERSION } from "@jose/model-types";
-import type { SnapshotEnvelope, SnapshotStore } from "./ports/snapshot-store";
+import { Hono } from "hono";
 import type { BlobStore } from "./ports/blob-store";
+import type { SnapshotEnvelope, SnapshotStore } from "./ports/snapshot-store";
 
 /** The adapters the app composes — injected so tests and prod wire different stores. */
 export interface AppDeps {
-  /** The versioned-snapshot store (Drizzle/Neon in prod, in-memory in dev/test). */
-  readonly snapshots: SnapshotStore;
   /** The blob store (R2 in prod, in-memory in dev/test). */
   readonly blobs: BlobStore;
+  /** The versioned-snapshot store (Drizzle/Neon in prod, in-memory in dev/test). */
+  readonly snapshots: SnapshotStore;
 }
 
 /** The accepted body when saving a snapshot. */
 interface SaveSnapshotBody {
-  readonly revision?: number;
   readonly payload: unknown;
+  readonly revision?: number;
 }
 
 /** Narrow an unknown JSON body to {@link SaveSnapshotBody}; returns `undefined` if malformed. */
 function parseSaveBody(body: unknown): SaveSnapshotBody | undefined {
   if (typeof body !== "object" || body === null || !("payload" in body)) {
-    return undefined;
+    return;
   }
   const candidate = body as { revision?: unknown; payload: unknown };
-  if (candidate.revision !== undefined && typeof candidate.revision !== "number") {
-    return undefined;
+  if (
+    candidate.revision !== undefined &&
+    typeof candidate.revision !== "number"
+  ) {
+    return;
   }
   return { revision: candidate.revision, payload: candidate.payload };
 }
@@ -42,7 +45,11 @@ export function buildApp(deps: AppDeps): Hono {
 
   // Liveness + the schema version this build serves (so a client can detect a stale backend).
   app.get("/health", (c) =>
-    c.json({ status: "ok", modelVersion: MODEL_VERSION, layoutHash: LAYOUT_HASH }),
+    c.json({
+      status: "ok",
+      modelVersion: MODEL_VERSION,
+      layoutHash: LAYOUT_HASH,
+    })
   );
 
   // Save a new snapshot of a project's domain state. The payload is opaque; the boundary stamps
@@ -87,7 +94,7 @@ export function buildApp(deps: AppDeps): Hono {
           snapshotLayout: snapshot.layoutHash,
           currentLayout: LAYOUT_HASH,
         },
-        409,
+        409
       );
     }
     return c.json(snapshot);
@@ -97,7 +104,8 @@ export function buildApp(deps: AppDeps): Hono {
   app.put("/blobs/:key", async (c) => {
     const key = c.req.param("key");
     const bytes = new Uint8Array(await c.req.arrayBuffer());
-    const contentType = c.req.header("content-type") ?? "application/octet-stream";
+    const contentType =
+      c.req.header("content-type") ?? "application/octet-stream";
     await deps.blobs.put(key, bytes, contentType);
     return c.json({ key, bytes: bytes.byteLength }, 201);
   });
@@ -108,7 +116,9 @@ export function buildApp(deps: AppDeps): Hono {
     if (blob === undefined) {
       return c.json({ error: "not found" }, 404);
     }
-    return new Response(blob.body, { headers: { "Content-Type": blob.contentType } });
+    return new Response(blob.body, {
+      headers: { "Content-Type": blob.contentType },
+    });
   });
 
   return app;

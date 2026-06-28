@@ -18,13 +18,13 @@ export interface Point {
 /** Draw (or redraw) a wall from two plan-baseline endpoints. Mirrors the engine's `drawWall` ABI:
  *  linear inputs are ticks, the on-center module is real inches. */
 export interface DrawWallCommand {
-  readonly kind: "drawWall";
-  readonly x0: number;
-  readonly y0: number;
-  readonly x1: number;
-  readonly y1: number;
   readonly height: number;
+  readonly kind: "drawWall";
   readonly spacingInches: number;
+  readonly x0: number;
+  readonly x1: number;
+  readonly y0: number;
+  readonly y1: number;
 }
 
 /** The immutable intents the runner can emit (one variant per modeled tool). */
@@ -48,12 +48,12 @@ export const TOOL_CATALOG: Record<string, ToolDefinition> = {
 
 /** Runner settings — the modal value grammar (height, OC module) and the snap grid. */
 export interface ToolSettings {
-  /** Wall height applied to drawn walls, ticks. */
-  readonly wallHeightTicks: number;
-  /** On-center module applied to drawn walls, real inches. */
-  readonly spacingInches: number;
   /** Snap grid spacing, ticks (e.g. 32 = 1in). */
   readonly gridTicks: number;
+  /** On-center module applied to drawn walls, real inches. */
+  readonly spacingInches: number;
+  /** Wall height applied to drawn walls, ticks. */
+  readonly wallHeightTicks: number;
 }
 
 /** 8ft tall, 16in OC, 1in snap grid. */
@@ -63,7 +63,8 @@ export const DEFAULT_SETTINGS: ToolSettings = {
   gridTicks: 32, // 1in
 };
 
-const snapValue = (v: number, grid: number): number => (grid > 0 ? Math.round(v / grid) * grid : v);
+const snapValue = (v: number, grid: number): number =>
+  grid > 0 ? Math.round(v / grid) * grid : v;
 
 /**
  * The single drawing state machine. Holds the active tool, the accumulated snapped picks, and the
@@ -103,7 +104,10 @@ export class ToolRunner {
 
   /** Snap a raw world point onto the tick grid. */
   snap(raw: Point): Point {
-    return { x: snapValue(raw.x, this.settings.gridTicks), y: snapValue(raw.y, this.settings.gridTicks) };
+    return {
+      x: snapValue(raw.x, this.settings.gridTicks),
+      y: snapValue(raw.y, this.settings.gridTicks),
+    };
   }
 
   /** Abort the in-progress operation, keeping the active tool. */
@@ -117,7 +121,9 @@ export class ToolRunner {
    */
   pick(raw: Point): Command | null {
     this.picks.push(this.snap(raw));
-    if (this.picks.length < this.active.picks) return null;
+    if (this.picks.length < this.active.picks) {
+      return null;
+    }
 
     const command = this.commit();
     this.picks = [];
@@ -127,8 +133,11 @@ export class ToolRunner {
   private commit(): Command {
     switch (this.active.key) {
       case "wall": {
-        const a = this.picks[0]!;
-        const b = this.picks[1]!;
+        const a = this.picks[0];
+        const b = this.picks[1];
+        if (!(a && b)) {
+          throw new Error("tool-runner: 'wall' requires two picks");
+        }
         return {
           kind: "drawWall",
           x0: a.x,
@@ -140,13 +149,17 @@ export class ToolRunner {
         };
       }
       default:
-        throw new Error(`tool-runner: tool "${this.active.key}" has no commit rule`);
+        throw new Error(
+          `tool-runner: tool "${this.active.key}" has no commit rule`
+        );
     }
   }
 }
 
 function requireTool(key: string): ToolDefinition {
   const tool = TOOL_CATALOG[key];
-  if (!tool) throw new Error(`tool-runner: unknown tool "${key}"`);
+  if (!tool) {
+    throw new Error(`tool-runner: unknown tool "${key}"`);
+  }
   return tool;
 }

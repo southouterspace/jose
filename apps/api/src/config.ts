@@ -8,18 +8,20 @@
 
 /** The resolved runtime configuration for the persistence boundary. */
 export interface ApiConfig {
-  /** TCP port the Bun server binds (ignored on Workers, which owns the listener). */
-  readonly port: number;
   /** Neon/Postgres connection string for the Drizzle snapshot store; `undefined` ⇒ in-memory. */
   readonly databaseUrl: string | undefined;
+  /** TCP port the Bun server binds (ignored on Workers, which owns the listener). */
+  readonly port: number;
   /** Cloudflare R2 bucket name for blob storage; `undefined` ⇒ in-memory blob store. */
   readonly r2Bucket: string | undefined;
 }
 
 /** Read configuration from `Bun.env` (falling back to `process.env`-style access via Bun). */
-export function loadConfig(env: Record<string, string | undefined> = Bun.env): ApiConfig {
+export function loadConfig(
+  env: Record<string, string | undefined> = Bun.env
+): ApiConfig {
   const rawPort = env.PORT;
-  const port = rawPort !== undefined ? Number.parseInt(rawPort, 10) : 8787;
+  const port = rawPort === undefined ? 8787 : Number.parseInt(rawPort, 10);
   return {
     port: Number.isFinite(port) ? port : 8787,
     databaseUrl: env.DATABASE_URL,

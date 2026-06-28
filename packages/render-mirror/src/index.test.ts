@@ -1,20 +1,23 @@
 import { expect, test } from "bun:test";
 import { BUFFER_LAYOUTS, LAYOUT_HASH } from "@jose/model-types";
-import { MemberMirror, MEMBER_ROLES, assertLayout } from "./index";
+import { assertLayout, MEMBER_ROLES, MemberMirror } from "./index";
 
 const L = BUFFER_LAYOUTS.MemberPlacement;
 
 /** Encode rows into a SoA block exactly as the Rust writer does: pure column-major, little-endian,
  *  at the *generated* byte offsets. If the reader and this writer agree, the keystone holds. */
-function encode(rows: Array<Record<string, number>>): ArrayBuffer {
+function encode(rows: Record<string, number>[]): ArrayBuffer {
   const buffer = new ArrayBuffer(L.bufferBytes);
   const view = new DataView(buffer);
   rows.forEach((row, i) => {
     for (const col of L.columns) {
       const at = col.byteOffset + i * col.stride;
       const value = row[col.field] ?? 0;
-      if (col.arrayKind === "Uint32Array") view.setUint32(at, value, true);
-      else view.setInt32(at, value, true);
+      if (col.arrayKind === "Uint32Array") {
+        view.setUint32(at, value, true);
+      } else {
+        view.setInt32(at, value, true);
+      }
     }
   });
   return buffer;
