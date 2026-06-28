@@ -1,13 +1,18 @@
 # Rust workspace root (virtual manifest).
 #
-# Domain-context crates land in Phase 2+ of docs/plans/repo-scaffold.md:
-#   crates/geometry-kernel, crates/reference-data, crates/materials, ...
-# Phase 1 is the spine only, so the member list is intentionally empty.
+# Members land incrementally per docs/plans/repo-scaffold.md §8:
+#   Phase 2 — geometry-kernel, reference-data (shared kernels)
+#   Phase 3 — materials, building, loads-analysis, design-standard (core contexts)
+# The boundary/frontend (bim-wasm) and supporting/backend crates land in Phases 4–5.
 [workspace]
 resolver = "3"
 members = [
     "crates/geometry-kernel",
     "crates/reference-data",
+    "crates/materials",
+    "crates/building",
+    "crates/loads-analysis",
+    "crates/design-standard",
 ]
 
 [workspace.package]

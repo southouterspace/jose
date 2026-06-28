@@ -1,0 +1,19 @@
+[package]
+name = "loads-analysis"
+version = "0.0.0"
+description = "Loads & Analysis context: quantifies load sources, distributes them down the connection graph, and emits per-member factored demand."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+geometry-kernel = { path = "../geometry-kernel" }
+reference-data = { path = "../reference-data" }
+building = { path = "../building" }
+
+[dev-dependencies]
+# Only the tests construct a MemberPlacement, whose spec_ref is a materials key.
+materials = { path = "../materials" }
