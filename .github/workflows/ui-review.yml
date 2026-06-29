@@ -1,0 +1,98 @@
+# Advisory UI review — runs the /web-interface-guidelines reviewer on changed web files and posts
+# findings as a PR comment. This is NOT a gate: model output varies and can have false positives, so
+# the job is `continue-on-error` and is never a required check. The deterministic rules stay in
+# ci.yml (Biome/tsc/codegen/clippy), which IS required. See ADR 0011.
+name: UI review (advisory)
+
+on:
+  pull_request:
+    # Only when user-facing web code (or the rules themselves) change — engine-only PRs skip this.
+    paths:
+      - "apps/web/**"
+      - "packages/render-mirror/**"
+      - "packages/tool-runner/**"
+      - ".agents/skills/product-design/references/web-interface-guidelines.md"
+      - ".claude/commands/web-interface-guidelines.md"
+
+permissions:
+  contents: read
+  pull-requests: write # to post the advisory comment
+
+concurrency:
+  group: ui-review-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web-interface-guidelines:
+    name: Web Interface Guidelines (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true # advisory only — a finding (or a misconfig) never fails the PR
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need the base commit to diff changed files
+
+      - name: Require ANTHROPIC_API_KEY (skip cleanly if absent)
+        id: guard
+        env:
+          KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "${KEY:-}" ]; then
+            echo "::notice::ANTHROPIC_API_KEY not configured — advisory UI review skipped."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Collect changed web files
+        if: steps.guard.outputs.run == 'true'
+        id: changed
+        run: |
+          FILES=$(git diff --name-only \
+            "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" \
+            -- 'apps/web/**' 'packages/render-mirror/**' 'packages/tool-runner/**' | tr '\n' ' ')
+          echo "files=${FILES}" >> "$GITHUB_OUTPUT"
+          echo "Changed web files: ${FILES:-<none>}"
+
+      - name: Run reviewer (Claude Code headless, read-only)
+        if: steps.guard.outputs.run == 'true' && steps.changed.outputs.files != ''
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          npx -y @anthropic-ai/claude-code@latest \
+            -p "/web-interface-guidelines ${{ steps.changed.outputs.files }}" \
+            --allowedTools "Read,Grep,Glob" \
+            --output-format text > ui-review.txt 2>&1 || true
+          echo "--- review output ---"
+          cat ui-review.txt
+
+      - name: Post findings as a PR comment
+        if: steps.guard.outputs.run == 'true' && steps.changed.outputs.files != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let body = '';
+            try { body = fs.readFileSync('ui-review.txt', 'utf8').trim(); } catch {}
+            if (!body) return;
+            const marker = '<!-- web-interface-guidelines -->';
+            const out = [
+              marker,
+              '## Web Interface Guidelines (advisory)',
+              '',
+              'Non-blocking. Reports `[agent]`/`[gap]` findings only — rules in',
+              '`.agents/skills/product-design/references/web-interface-guidelines.md`.',
+              '',
+              '```text',
+              body,
+              '```',
+            ].join('\n');
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: out });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body: out });
+            }

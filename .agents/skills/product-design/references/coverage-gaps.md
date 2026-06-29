@@ -47,12 +47,20 @@ then move it into a reference/rule/exemplar and delete it here.
 
 ## Deterministic checks
 
-- **No Jose-specific lint rules.** Only the Ultracite/Biome preset runs. Mechanically-checkable
-  product rules (e.g. `display-feet-not-ticks`, a canonical-noun check) are candidates for a custom
-  check but **are not built**. `rules.md` carries them as judgment for now.
+- **No Jose-specific lint rules.** Only the Ultracite/Biome preset runs (it already gates the
+  `[biome]`-tagged accessibility/anti-pattern rules in `web-interface-guidelines.md`).
+  Mechanically-checkable *product* rules (e.g. `display-feet-not-ticks`, a canonical-noun check) and
+  the `[gap]`-tagged web rules (`outline: none` without a focus replacement, `transition: all`,
+  literal `...`, `user-scalable=no`) are reliable custom-check candidates but **are not built** —
+  deferred until there's real surface to check (ADR 0011). `rules.md` and `web-interface-guidelines.md`
+  carry them as judgment for now.
 
 ## Process
 
 - **No evidence-intake loop running.** The `tooling/scripts/evals/` structure exists as scaffolding
   (fixtures + a rules checklist), but there is no weekly Slack/Figma/PR intake job and no eval runner
   wired into CI. The eval harness is a documented starting point, not an automated gate.
+- **Advisory UI review exists but is gated on a secret.** `.github/workflows/ui-review.yml` runs the
+  `/web-interface-guidelines` reviewer on changed web files (advisory, non-blocking; ADR 0011). It
+  **skips cleanly until an `ANTHROPIC_API_KEY` repo secret is configured** — until then it produces no
+  findings. It is not a substitute for the offline evals.
