@@ -14,6 +14,9 @@ apps/web/src/wasm/pkg
 # Bun keeps a binary lockfile; track it, ignore the text mirror cache
 bun.lockb.tmp
 
+# Throwaway visual artifacts (regenerable, e.g. `cargo run --example corner_dump > scratchpad/...`)
+/scratchpad
+
 # Editor / OS
 .DS_Store
 .idea

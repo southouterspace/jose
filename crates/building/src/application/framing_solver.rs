@@ -5,14 +5,16 @@
 //! *anchored* at the wall start and derived from the spacing module, so interior stud positions
 //! are invariant under a length change — only the end stud moves.
 
+use crate::application::junction_detail::{DetailedPost, detail_junction, plate_lap};
+use crate::application::junction_detector::detect_junctions;
 use crate::domain::placement::{
     BracedBy, BracingAxis, BracingRef, EndCondition, Fixity, MemberEnd, MemberPlacement,
     Orientation,
 };
 use crate::domain::role::FramingRole;
-use crate::domain::wall::{Junction, JunctionMethod, OpeningType, Wall};
+use crate::domain::wall::{Junction, JunctionMethod, JunctionType, OpeningType, Wall};
 use crate::keys::MemberPlacementId;
-use geometry_kernel::{Tick, TickVec3, Transform};
+use geometry_kernel::{Tick, TickVec2, TickVec3, Transform};
 use materials::SpecKey;
 
 /// Nominal dressed plate/stud thickness, 1.5in = 48 ticks.
@@ -97,17 +99,20 @@ impl FramingSolver {
     }
 
     /// Frame one wall (with the junctions it participates in) into a derived, ordered placement
-    /// set. Only `assemblyKind = Wall` is modeled here; Floor/Roof/Sheathing route their own rule
-    /// packs through this same entry point and currently emit nothing (extension stubs).
+    /// set. `neighbors` carries the other walls a junction couples this one to, so the junction
+    /// detailer can build the corner geometry; pass an empty slice when there are no junctions.
+    /// Only `assemblyKind = Wall` is modeled here; Floor/Roof/Sheathing route their own rule packs
+    /// through this same entry point and currently emit nothing (extension stubs).
     pub fn frame(
         &mut self,
         kind: AssemblyKind,
         wall: &Wall,
         junctions: &[Junction],
+        neighbors: &[Wall],
         rules: &RuleSet,
     ) -> Vec<MemberPlacement> {
         match kind {
-            AssemblyKind::Wall => self.frame_wall(wall, junctions, rules),
+            AssemblyKind::Wall => self.frame_wall(wall, junctions, neighbors, rules),
             // Extension stubs: same promotion + placement seam, rule packs land later.
             AssemblyKind::Floor | AssemblyKind::Roof | AssemblyKind::Sheathing => Vec::new(),
         }
@@ -117,6 +122,7 @@ impl FramingSolver {
         &mut self,
         wall: &Wall,
         junctions: &[Junction],
+        neighbors: &[Wall],
         rules: &RuleSet,
     ) -> Vec<MemberPlacement> {
         let mut out = Vec::new();
@@ -124,7 +130,7 @@ impl FramingSolver {
         let stud_len = Tick((wall.height.raw() - plate_stack).max(0));
         let bottom_z = rules.bottom_plates as i32 * PLATE_THICKNESS;
 
-        // Plates span the full wall length.
+        // Bottom plate(s) span the full wall length.
         for i in 0..rules.bottom_plates {
             let z = i as i32 * PLATE_THICKNESS;
             out.push(self.member(
@@ -135,13 +141,17 @@ impl FramingSolver {
                 Orientation::flat(),
             ));
         }
+        // Lapped double top plate: each course is extended into / trimmed back from each end's
+        // corner so exactly one wall covers the corner cell per course, staggered between courses
+        // (ADR 0009 §5). `course 0` = the lower top plate, `course 1` = the cap plate.
         for i in 0..rules.top_plates {
             let z = wall.height.raw() - (i as i32 + 1) * PLATE_THICKNESS;
+            let (start_x, length) = self.lapped_top_plate_extent(wall, junctions, neighbors, i);
             out.push(self.member(
                 rules.plate_spec.clone(),
                 FramingRole::Plate,
-                TickVec3::new(Tick(0), Tick(0), Tick(z)),
-                wall.length,
+                TickVec3::new(Tick(start_x), Tick(0), Tick(z)),
+                Tick(length),
                 Orientation::flat(),
             ));
         }
@@ -232,22 +242,98 @@ impl FramingSolver {
             }
         }
 
-        // Shared corner/intersection posts — only the owner wall frames them, so a shared post is
-        // counted exactly once.
+        // Shared corner posts — only the owner wall frames them (a shared post is counted exactly
+        // once). The junction detailer turns each owned corner into real, world-placed vertical
+        // members (the S1/S2/S3 footprints), not just a count.
         for j in junctions.iter().filter(|j| j.is_owner(wall.id)) {
-            for _ in 0..j.method.post_count() {
-                out.push(self.stud(
-                    rules.stud_spec.clone(),
-                    FramingRole::Post,
-                    0,
-                    bottom_z,
-                    stud_len,
-                    step,
-                ));
+            let participants: Vec<&Wall> = std::iter::once(wall)
+                .chain(neighbors.iter().filter(|n| j.walls.contains(&n.id)))
+                .collect();
+            let detail = detail_junction(j, &participants);
+            for post in detail.posts {
+                out.push(self.corner_post(rules.stud_spec.clone(), post, bottom_z, stud_len, step));
             }
         }
 
         out
+    }
+
+    /// The lapped top-plate extent for `course` of `wall`: its world-local start x and length in
+    /// ticks. A corner the wall runs *through* on this course extends the plate one wall-thickness
+    /// past that baseline end into the corner cell; a corner it *butts* trims the plate back one
+    /// wall-thickness so it stops short. Staggered between courses, so exactly one of the two walls
+    /// at a corner covers the corner cell per course (ADR 0009 §5).
+    fn lapped_top_plate_extent(
+        &self,
+        wall: &Wall,
+        junctions: &[Junction],
+        neighbors: &[Wall],
+        course: u32,
+    ) -> (i32, i32) {
+        let thickness = wall.thickness.raw();
+        let mut start = 0;
+        let mut end = wall.length.raw();
+        for j in junctions
+            .iter()
+            .filter(|j| j.junction_type == JunctionType::Corner)
+        {
+            let Some(lap) = plate_lap(j, wall.id, course) else {
+                continue;
+            };
+            let delta = if lap.runs_through {
+                thickness
+            } else {
+                -thickness
+            };
+            // Which baseline end this corner sits at: the shared vertex matches one of this wall's
+            // endpoints. Find it via the neighbour wall the junction couples us to.
+            if corner_at_wall_start(wall, j, neighbors) {
+                start -= delta;
+            } else {
+                end += delta;
+            }
+        }
+        (start, (end - start).max(0))
+    }
+
+    /// A corner post placed at its **world** plan min corner (the detailer already resolved the
+    /// junction-local recipe to world), standing up the wall. Same install context as a field stud
+    /// (bears at the bottom, pinned at the top, weak-axis braced by sheathing at the OC step).
+    fn corner_post(
+        &mut self,
+        spec: SpecKey,
+        post: DetailedPost,
+        bottom_z: i32,
+        length: Tick,
+        step: i32,
+    ) -> MemberPlacement {
+        MemberPlacement {
+            id: self.fresh_id(),
+            spec_ref: spec,
+            role: FramingRole::Post,
+            transform: Transform::at(TickVec3::new(post.min.u, post.min.v, Tick(bottom_z))),
+            length,
+            orientation: Orientation::vertical_stud(),
+            bracing: vec![BracingRef {
+                axis: BracingAxis::Weak,
+                braced_by: BracedBy::Sheathing,
+                spacing: Tick(step),
+            }],
+            ends: [
+                EndCondition {
+                    end: MemberEnd::Start,
+                    fixity: Fixity::Bearing,
+                    connection_ref: None,
+                },
+                EndCondition {
+                    end: MemberEnd::Finish,
+                    fixity: Fixity::Pinned,
+                    connection_ref: None,
+                },
+            ],
+            connections: Vec::new(),
+            demand_ref: None,
+        }
     }
 
     /// A vertical member (stud/king/jack/cripple/post) at wall-local `x`, sitting on the bottom
@@ -326,6 +412,49 @@ impl FramingSolver {
     }
 }
 
+/// Frame a **set** of walls end-to-end: detect their junctions, then frame each wall with the
+/// junctions it participates in and the neighbour walls those junctions couple it to (ADR 0009 §6
+/// — wholesale recompute). Returns every member across all walls, with stable ids minted in wall
+/// order. This is the building-context entry the session composes; the single-wall `frame` stays
+/// for the one-wall draw path.
+pub fn frame_walls(
+    solver: &mut FramingSolver,
+    kind: AssemblyKind,
+    walls: &[Wall],
+    rules: &RuleSet,
+) -> Vec<MemberPlacement> {
+    let junctions = detect_junctions(walls);
+    let mut out = Vec::new();
+    for wall in walls {
+        let mine: Vec<Junction> = junctions
+            .iter()
+            .filter(|j| j.walls.contains(&wall.id))
+            .cloned()
+            .collect();
+        let neighbors: Vec<Wall> = walls.iter().filter(|w| w.id != wall.id).cloned().collect();
+        out.extend(solver.frame(kind, wall, &mine, &neighbors, rules));
+    }
+    out
+}
+
+/// Whether `junction`'s shared corner sits at `wall`'s baseline **start** (endpoint `a`, x=0 in
+/// wall-local) rather than its end (endpoint `b`, x=length). The shared vertex is the endpoint
+/// `wall` has in common with its neighbour at this junction; comparing it to `a` gives the end.
+fn corner_at_wall_start(wall: &Wall, junction: &Junction, neighbors: &[Wall]) -> bool {
+    let a = TickVec2::new(wall.baseline.a.x, wall.baseline.a.y);
+    let Some(other) = neighbors
+        .iter()
+        .find(|n| n.id != wall.id && junction.walls.contains(&n.id))
+    else {
+        return false;
+    };
+    let oa = TickVec2::new(other.baseline.a.x, other.baseline.a.y);
+    let ob = TickVec2::new(other.baseline.b.x, other.baseline.b.y);
+    // The shared vertex is whichever of this wall's endpoints also belongs to the neighbour. If it
+    // is endpoint `a`, the corner sits at this wall's start (x = 0); otherwise it is at the end.
+    a == oa || a == ob
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -364,7 +493,7 @@ mod tests {
     #[test]
     fn frames_plates_and_studs() {
         let mut fs = FramingSolver::new();
-        let members = fs.frame(AssemblyKind::Wall, &wall(3840), &[], &rules());
+        let members = fs.frame(AssemblyKind::Wall, &wall(3840), &[], &[], &rules());
         let plates = members
             .iter()
             .filter(|m| m.role == FramingRole::Plate)
@@ -388,7 +517,7 @@ mod tests {
     fn grid_is_stable_under_a_small_nudge() {
         let mut fs = FramingSolver::new();
         let before: Vec<i32> = fs
-            .frame(AssemblyKind::Wall, &wall(3840), &[], &rules())
+            .frame(AssemblyKind::Wall, &wall(3840), &[], &[], &rules())
             .iter()
             .filter(|m| m.role == FramingRole::Stud)
             .map(|m| m.transform.origin.x.raw())
@@ -396,7 +525,7 @@ mod tests {
         // Nudge the wall 2in (64 ticks) longer; interior grid positions must be unchanged.
         let mut fs2 = FramingSolver::new();
         let after: Vec<i32> = fs2
-            .frame(AssemblyKind::Wall, &wall(3840 + 64), &[], &rules())
+            .frame(AssemblyKind::Wall, &wall(3840 + 64), &[], &[], &rules())
             .iter()
             .filter(|m| m.role == FramingRole::Stud)
             .map(|m| m.transform.origin.x.raw())
@@ -421,7 +550,7 @@ mod tests {
             position: Tick(32 * 48), // 4ft in
         });
         let mut fs = FramingSolver::new();
-        let m = fs.frame(AssemblyKind::Wall, &w, &[], &rules());
+        let m = fs.frame(AssemblyKind::Wall, &w, &[], &[], &rules());
         assert_eq!(m.iter().filter(|x| x.role == FramingRole::King).count(), 2);
         assert_eq!(
             m.iter().filter(|x| x.role == FramingRole::Header).count(),
@@ -437,34 +566,224 @@ mod tests {
         assert!(!inside);
     }
 
+    /// An L-corner: owner wall id 1 runs into the origin along +x; other wall id 2 leaves along
+    /// +y. Vertex at the world origin so the golden footprints land where the detailer puts them.
+    fn l_corner_walls() -> (Wall, Wall) {
+        let owner = {
+            let baseline = Segment::new(
+                TickVec3::new(Tick(10 * 384), Tick(0), Tick(0)),
+                TickVec3::ZERO,
+            );
+            Wall::promote(
+                WallId(1),
+                FaceRef {
+                    volume: EntityId(1),
+                    face_index: 0,
+                },
+                baseline,
+                Tick(96 * 32),
+                Tick(112),
+                WallRole::Bearing,
+                SpacingModule::inches(16),
+            )
+        };
+        let other = {
+            let baseline = Segment::new(
+                TickVec3::ZERO,
+                TickVec3::new(Tick(0), Tick(10 * 384), Tick(0)),
+            );
+            Wall::promote(
+                WallId(2),
+                FaceRef {
+                    volume: EntityId(1),
+                    face_index: 0,
+                },
+                baseline,
+                Tick(96 * 32),
+                Tick(112),
+                WallRole::Bearing,
+                SpacingModule::inches(16),
+            )
+        };
+        (owner, other)
+    }
+
     #[test]
     fn only_owner_frames_junction_posts() {
+        let (owner_wall, other_wall) = l_corner_walls();
         let j = Junction {
             junction_type: crate::domain::wall::JunctionType::Corner,
             walls: vec![WallId(1), WallId(2)],
             owner_wall: WallId(1),
             method: JunctionMethod::California,
+            sense: Some(crate::domain::wall::CornerSense::Outside),
         };
         let mut fs = FramingSolver::new();
         let owner = fs.frame(
             AssemblyKind::Wall,
-            &wall(3840),
+            &owner_wall,
             std::slice::from_ref(&j),
+            std::slice::from_ref(&other_wall),
             &rules(),
         );
-        assert_eq!(
-            owner.iter().filter(|m| m.role == FramingRole::Post).count(),
-            3
+        // California → three real corner posts (not just a count).
+        let posts: Vec<_> = owner
+            .iter()
+            .filter(|m| m.role == FramingRole::Post)
+            .collect();
+        assert_eq!(posts.len(), 3);
+        // Every post is vertical (extends up in +z), anchored on the bottom plate.
+        assert!(posts.iter().all(|p| p.role.is_vertical()));
+        // The S1 corner post sits at the world vertex (origin) min corner.
+        assert!(
+            posts
+                .iter()
+                .any(|p| p.transform.origin.x.raw() == 0 && p.transform.origin.y.raw() == 0)
         );
 
         // A non-owner wall sees the same junction but frames no posts.
-        let mut w2 = wall(3840);
-        w2.id = WallId(2);
         let mut fs2 = FramingSolver::new();
-        let other = fs2.frame(AssemblyKind::Wall, &w2, std::slice::from_ref(&j), &rules());
+        let other = fs2.frame(
+            AssemblyKind::Wall,
+            &other_wall,
+            std::slice::from_ref(&j),
+            std::slice::from_ref(&owner_wall),
+            &rules(),
+        );
         assert_eq!(
             other.iter().filter(|m| m.role == FramingRole::Post).count(),
             0
+        );
+    }
+
+    fn wall_between(id: u128, ax: i32, ay: i32, bx: i32, by: i32) -> Wall {
+        let baseline = Segment::new(
+            TickVec3::new(Tick(ax), Tick(ay), Tick(0)),
+            TickVec3::new(Tick(bx), Tick(by), Tick(0)),
+        );
+        Wall::promote(
+            WallId(id),
+            FaceRef {
+                volume: EntityId(1),
+                face_index: 0,
+            },
+            baseline,
+            Tick(96 * 32),
+            Tick(112),
+            WallRole::Bearing,
+            SpacingModule::inches(16),
+        )
+    }
+
+    #[test]
+    fn rectangle_frames_four_corners_owner_only_no_doubling() {
+        // CCW 10ft square: four walls, four outside corners. Each corner is California (3 posts),
+        // owned once → exactly 4 × 3 = 12 posts across the whole set, never doubled.
+        let ft = 384;
+        let walls = [
+            wall_between(1, 0, 0, 10 * ft, 0),
+            wall_between(2, 10 * ft, 0, 10 * ft, 10 * ft),
+            wall_between(3, 10 * ft, 10 * ft, 0, 10 * ft),
+            wall_between(4, 0, 10 * ft, 0, 0),
+        ];
+        let mut fs = FramingSolver::new();
+        let members = frame_walls(&mut fs, AssemblyKind::Wall, &walls, &rules());
+        let posts = members
+            .iter()
+            .filter(|m| m.role == FramingRole::Post)
+            .count();
+        assert_eq!(
+            posts,
+            4 * JunctionMethod::California.post_count() as usize,
+            "four corners × the California post count, owner-only (no doubling)"
+        );
+    }
+
+    #[test]
+    fn inside_corner_frames_without_error() {
+        // The reentrant elbow of an L-shaped room: detected Inside → ThreeStud, frames cleanly.
+        let ft = 384;
+        let a = wall_between(1, 10 * ft, 6 * ft, 6 * ft, 6 * ft);
+        let b = wall_between(2, 6 * ft, 6 * ft, 6 * ft, 10 * ft);
+        let mut fs = FramingSolver::new();
+        let members = frame_walls(&mut fs, AssemblyKind::Wall, &[a, b], &rules());
+        // Inside default ThreeStud → 3 posts at the one corner, owner-only.
+        assert_eq!(
+            members
+                .iter()
+                .filter(|m| m.role == FramingRole::Post)
+                .count(),
+            JunctionMethod::ThreeStud.post_count() as usize
+        );
+    }
+
+    #[test]
+    fn lapped_top_plate_staggers_and_covers_the_corner_cell() {
+        // The golden L: owner (id 1) runs into the origin along +x; other (id 2) leaves along +y.
+        // The corner sits at the owner's baseline END (x = length) and the other's START (x = 0).
+        let (owner_wall, other_wall) = l_corner_walls();
+        let j = Junction {
+            junction_type: JunctionType::Corner,
+            walls: vec![WallId(1), WallId(2)],
+            owner_wall: WallId(1),
+            method: JunctionMethod::California,
+            sense: Some(crate::domain::wall::CornerSense::Outside),
+        };
+        let thickness = 112;
+        let len = owner_wall.length.raw();
+
+        // Owner: course 0 runs through (extends past the end by +thickness), course 1 butts (-).
+        let fs = FramingSolver::new();
+        let o0 = fs.lapped_top_plate_extent(
+            &owner_wall,
+            std::slice::from_ref(&j),
+            std::slice::from_ref(&other_wall),
+            0,
+        );
+        let o1 = fs.lapped_top_plate_extent(
+            &owner_wall,
+            std::slice::from_ref(&j),
+            std::slice::from_ref(&other_wall),
+            1,
+        );
+        // Owner's corner is at its END, so the through-course lengthens, the butt-course shortens.
+        assert_eq!(
+            o0,
+            (0, len + thickness),
+            "course 0: owner runs through (extended)"
+        );
+        assert_eq!(o1, (0, len - thickness), "course 1: owner butts (trimmed)");
+
+        // Other: corner at its START (x=0). Course 0 it butts (start moves +thickness, shortening),
+        // course 1 it runs through (start moves -thickness, lengthening). Staggered vs the owner.
+        let x0 = fs.lapped_top_plate_extent(
+            &other_wall,
+            std::slice::from_ref(&j),
+            std::slice::from_ref(&owner_wall),
+            0,
+        );
+        let x1 = fs.lapped_top_plate_extent(
+            &other_wall,
+            std::slice::from_ref(&j),
+            std::slice::from_ref(&owner_wall),
+            1,
+        );
+        let olen = other_wall.length.raw();
+        assert_eq!(x0, (thickness, olen - thickness), "course 0: other butts");
+        assert_eq!(
+            x1,
+            (-thickness, olen + thickness),
+            "course 1: other runs through"
+        );
+
+        // Per course exactly one wall covers the corner cell: course 0 owner-through XOR other-through.
+        assert!(
+            o0.1 > len && x0.0 > 0,
+            "course 0: owner covers, other recedes"
+        );
+        assert!(
+            o1.1 < len && x1.0 < 0,
+            "course 1: other covers, owner recedes"
         );
     }
 }

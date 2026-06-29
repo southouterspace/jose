@@ -3,3 +3,5 @@
 //! derived, stable `MemberPlacement[]`.
 
 pub mod framing_solver;
+pub mod junction_detail;
+pub mod junction_detector;

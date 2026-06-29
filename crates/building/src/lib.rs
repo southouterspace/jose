@@ -25,7 +25,9 @@ mod application;
 mod domain;
 mod keys;
 
-pub use application::framing_solver::{AssemblyKind, FramingSolver, RuleSet};
+pub use application::framing_solver::{AssemblyKind, FramingSolver, RuleSet, frame_walls};
+pub use application::junction_detail::{DetailedPost, JunctionDetail, PlateLap, detail_junction};
+pub use application::junction_detector::{CornerRules, detect_junctions};
 pub use domain::assemblies::{AssemblyFace, Floor, RisePerRun, Roof, Sheathing};
 pub use domain::placement::{
     BracedBy, BracingAxis, BracingRef, EndCondition, Fixity, LoadFace, MemberEnd, MemberPlacement,
@@ -34,7 +36,7 @@ pub use domain::placement::{
 pub use domain::role::FramingRole;
 pub use domain::spacing::{SpacingAnchor, SpacingKey, SpacingModule};
 pub use domain::wall::{
-    Junction, JunctionMethod, JunctionType, Opening, OpeningType, Wall, WallRole,
+    CornerSense, Junction, JunctionMethod, JunctionType, Opening, OpeningType, Wall, WallRole,
 };
 pub use keys::{
     ConnectionPointRef, FaceRef, FloorId, JunctionRef, MemberDemandRef, MemberPlacementId, RoofId,
