@@ -1,0 +1,19 @@
+{
+  "$comment": "Index of product-design eval fixtures. Score rule-correctness separately from similarity to after/. See README.md.",
+  "fixtures": [
+    {
+      "id": "status-text-units-and-noun",
+      "surface": "app-shell",
+      "mode": "harden",
+      "holdout": false,
+      "prompt": "Polish the status bar helper in this status surface so it's production-ready.",
+      "rules": [
+        "rule/display-feet-not-ticks",
+        "rule/canonical-noun",
+        "rule/stable-control-label"
+      ],
+      "source": ".agents/skills/product-design/exemplars/pr-space-first-drawing-ux.md",
+      "notes": "before/ shows raw ticks, calls the gesture 'Extrude', and mutates a control label to show progress. A skilled agent converts to feet, uses the canonical noun 'Push/Pull', and moves progress into the status line while keeping the control label stable."
+    }
+  ]
+}

@@ -19,6 +19,15 @@
       "assist": { "enabled": false }
     },
     {
+      // Governance/docs, not source: the product-design skill (.agents/**) is hand-authored
+      // markdown (ADR 0010), and the eval fixtures under tooling/scripts/evals/ intentionally
+      // encode flawed "before" UI — Biome must not reformat or "fix" the very mistakes they test.
+      "includes": [".agents/**", "tooling/scripts/evals/**"],
+      "formatter": { "enabled": false },
+      "linter": { "enabled": false },
+      "assist": { "enabled": false }
+    },
+    {
       // Workspace package entrypoints are intentional public-API barrels.
       "includes": ["packages/*/src/index.ts"],
       "linter": {
