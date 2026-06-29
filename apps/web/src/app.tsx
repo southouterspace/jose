@@ -50,7 +50,7 @@ export function App() {
         </section>
       </main>
 
-      <footer className="statusbar">
+      <footer aria-live="polite" className="statusbar">
         {store.ready ? statusText(store) : "Loading engine…"}
       </footer>
     </div>

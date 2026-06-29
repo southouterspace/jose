@@ -73,6 +73,9 @@ function gridLines(): {
   return lines;
 }
 
+/** Grid lines span a fixed world extent — compute once at module load, not per render. */
+const GRID_LINES = gridLines();
+
 /** The committed footprint ring as an SVG points string, read from the engine's mirror. */
 function ringPoints(footprint: FootprintMirror): string {
   return footprint
@@ -115,7 +118,7 @@ export function PlanView({ store }: PlanViewProps) {
     >
       <title>Plan drawing surface</title>
       <g className="plan__grid">
-        {gridLines().map((l) => (
+        {GRID_LINES.map((l) => (
           <line key={l.key} x1={l.x1} x2={l.x2} y1={l.y1} y2={l.y2} />
         ))}
       </g>

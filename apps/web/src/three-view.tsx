@@ -261,7 +261,10 @@ export function ThreeView({ store }: ThreeViewProps) {
     scene.add(grid);
 
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
+    // Honor reduced-motion: damping adds inertial drift after the pointer stops.
+    const reduceMotion =
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    controls.enableDamping = !reduceMotion;
     controls.target.set(0, 0, 0);
 
     const handle: SceneHandle = {
