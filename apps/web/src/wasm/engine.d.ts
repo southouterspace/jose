@@ -5,6 +5,10 @@
  * `./pkg/` by `bun run build:wasm` (wasm-pack). This declaration mirrors the `#[wasm_bindgen]`
  * surface so the app typechecks without the generated artifact present — the same shape wasm-pack
  * emits, kept in sync with `crates/bim-wasm/src/lib.rs`.
+ *
+ * This mirror is a fallback only: once `./pkg/bim_wasm.d.ts` exists, the concrete file wins over
+ * this wildcard module. CI's `wasm-types` job builds the real package and typechecks the app
+ * against it, so any drift between this mirror and the real engine surface fails the build.
  */
 declare module "*/bim_wasm.js" {
   /** The engine handle — see `crates/bim-wasm`'s `Engine`. */
