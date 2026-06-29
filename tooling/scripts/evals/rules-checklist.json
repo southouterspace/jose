@@ -1,0 +1,26 @@
+{
+  "$comment": "Judge criteria for the rules exercised by fixtures. Each maps to a rule in .agents/skills/product-design/references/rules.md.",
+  "rules": {
+    "rule/display-feet-not-ticks": {
+      "pLevel": "P1",
+      "check": "No user-facing string shows raw ticks. Any dimension is converted to feet/inches at the boundary (e.g. divide ticks by 384).",
+      "pass": "Output displays feet (e.g. \"8.0ft\"); no occurrence of the word 'ticks' in user-facing copy.",
+      "fail": "Any user-facing dimension rendered in ticks.",
+      "source": ".agents/skills/product-design/references/rules.md#ruledisplay-feet-not-ticks"
+    },
+    "rule/canonical-noun": {
+      "pLevel": "P2",
+      "check": "User-facing copy and aria-labels use the term owned by apps/web/CONTEXT.md, not a synonym.",
+      "pass": "Uses 'push/pull', 'footprint', 'mass', 'plan view', '3D view' as applicable.",
+      "fail": "Uses 'extrude', 'outline', 'box', 'room', '2D view', 'scene', etc. in user-facing text.",
+      "source": ".agents/skills/product-design/references/rules.md#rulecanonical-noun"
+    },
+    "rule/stable-control-label": {
+      "pLevel": "P2",
+      "check": "Control labels do not mutate to convey progress/state; progress lives in the status bar.",
+      "pass": "Tool/button label is a constant string; state is reported via status text.",
+      "fail": "A control's label changes between states (e.g. 'Footprint' -> 'Drawing...').",
+      "source": ".agents/skills/product-design/references/rules.md#rulestable-control-label"
+    }
+  }
+}
