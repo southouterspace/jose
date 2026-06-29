@@ -11,11 +11,13 @@ import init, { Engine } from "./wasm/pkg/bim_wasm.js";
 
 let engine: Engine | null = null;
 
-/** Ship both canonical space buffers back as one `space` response — the single recompute that feeds
- *  both panes (ADR 0008 §5). Each snapshot's backing buffer is transferred (zero-copy handoff). */
+/** Ship all three canonical space buffers back as one `space` response — the single recompute that
+ *  feeds both panes (ADR 0008 §5) and the 3D framing (ADR 0012): footprint, volume, and the framed
+ *  members. Each snapshot's backing buffer is transferred (zero-copy handoff). */
 function postSpace(engineRef: Engine): void {
   const footprintBuffer = engineRef.footprintSnapshot().buffer as ArrayBuffer;
   const volumeBuffer = engineRef.volumeSnapshot().buffer as ArrayBuffer;
+  const memberBuffer = engineRef.snapshot().buffer as ArrayBuffer;
   postMessage(
     {
       kind: "space",
@@ -23,8 +25,10 @@ function postSpace(engineRef: Engine): void {
       footprintBuffer,
       volumeCount: engineRef.volumeCount(),
       volumeBuffer,
+      memberCount: engineRef.memberCount(),
+      memberBuffer,
     } satisfies EngineResponse,
-    [footprintBuffer, volumeBuffer]
+    [footprintBuffer, volumeBuffer, memberBuffer]
   );
 }
 

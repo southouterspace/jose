@@ -45,7 +45,7 @@ export function assertLayout(engineLayoutHash: string): void {
   }
 }
 
-/** One decoded member: a wall-local elevation segment (ticks), a draw width, and its role. */
+/** One decoded member: a world-space segment (start→end, ticks; z up), a draw width, and its role. */
 export interface MemberRow {
   readonly role: string;
   readonly roleId: number;

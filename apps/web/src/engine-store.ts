@@ -8,6 +8,7 @@
 import {
   assertLayout,
   FootprintMirror,
+  MemberMirror,
   VolumeMirror,
 } from "@jose/render-mirror";
 import { type Command, TOOL_CATALOG, ToolRunner } from "@jose/tool-runner";
@@ -22,6 +23,8 @@ export interface EngineStore {
   readonly activeTool: string;
   /** The latest canonical footprint, as a read-only mirror — `null` until the first draw returns. */
   readonly footprint: FootprintMirror | null;
+  /** The latest framed members (perimeter studs/plates/posts) in world space — `null` until framed. */
+  readonly members: MemberMirror | null;
   /** The mid-draw picks for the active tool (transient UI; never canonical geometry). */
   readonly pendingPicks: readonly { x: number; y: number }[];
   /** Register a snapped world pick on the active tool; emits a command into the worker on commit. */
@@ -58,6 +61,7 @@ export function useEngineStore(): EngineStore {
   >([]);
   const [footprint, setFootprint] = useState<FootprintMirror | null>(null);
   const [volume, setVolume] = useState<VolumeMirror | null>(null);
+  const [members, setMembers] = useState<MemberMirror | null>(null);
 
   useEffect(() => {
     const worker = new Worker(new URL("./engine-worker.ts", import.meta.url), {
@@ -79,6 +83,9 @@ export function useEngineStore(): EngineStore {
         );
         setVolume(
           new VolumeMirror(response.volumeBuffer, response.volumeCount)
+        );
+        setMembers(
+          new MemberMirror(response.memberBuffer, response.memberCount)
         );
       }
     };
@@ -162,6 +169,7 @@ export function useEngineStore(): EngineStore {
     pendingPicks,
     footprint,
     volume,
+    members,
     ready,
   };
 }

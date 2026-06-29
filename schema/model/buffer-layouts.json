@@ -6,7 +6,7 @@
   "buffers": [
     {
       "domainType": "MemberPlacement",
-      "note": "The first end-to-end slice: one row per framing member emitted by the FramingSolver. Linear geometry is integer ticks (1/32in); coordinates are wall-local elevation (x along the baseline, z up) — composing the wall→world transform is a later pipeline stage. Each member is a segment (start→end) plus a draw width and an enumerated role.",
+      "note": "One row per framing member emitted by the FramingSolver. Linear geometry is integer ticks (1/32in); coordinates are WORLD space (x/y in plan, z up) — the wall→world transform is composed at the bim-core composition root (ADR 0006/0012). Each member is a segment (start→end) plus a draw width and an enumerated role.",
       "capacity": 4096,
       "columns": [
         { "field": "x0", "elementType": "i32", "fieldClass": "linearTick", "note": "Start point X (along the wall baseline), ticks." },

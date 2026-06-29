@@ -42,11 +42,14 @@ export type EngineResponse =
       readonly buffer: ArrayBuffer;
     }
   | {
-      /** One recompute, both space buffers: footprint vertices + the extruded volume (ADR 0008 §5).
-       *  Each `buffer` is the canonical SoA snapshot bytes; the `*Count`s bound the live rows. */
+      /** One recompute, all three space buffers: footprint vertices + the extruded volume (ADR 0008
+       *  §5) + the framed perimeter members (ADR 0012). Each `buffer` is the canonical SoA snapshot
+       *  bytes; the `*Count`s bound the live rows. */
       readonly kind: "space";
       readonly footprintCount: number;
       readonly footprintBuffer: ArrayBuffer;
       readonly volumeCount: number;
       readonly volumeBuffer: ArrayBuffer;
+      readonly memberCount: number;
+      readonly memberBuffer: ArrayBuffer;
     };

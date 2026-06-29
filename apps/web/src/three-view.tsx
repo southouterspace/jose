@@ -13,10 +13,15 @@
  * pointer orbits/zooms the camera.
  */
 
-import type { FootprintMirror, VolumeMirror } from "@jose/render-mirror";
+import type {
+  FootprintMirror,
+  MemberMirror,
+  VolumeMirror,
+} from "@jose/render-mirror";
 import { pushPullDistance } from "@jose/tool-runner";
 import { useEffect, useRef } from "react";
 import {
+  BoxGeometry,
   Color,
   DirectionalLight,
   DoubleSide,
@@ -35,11 +40,29 @@ import {
   Shape,
   ShapeGeometry,
   Vector2,
+  Vector3,
   WebGLRenderer,
 } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { EngineStore } from "./engine-store";
 import { frameMass, TICKS_PER_UNIT } from "./mass-tessellation";
+import { memberBoxes } from "./member-tessellation";
+
+/** Member fill colors by `roleId` (warm timber tones); the post family stands out a touch darker. */
+const ROLE_COLORS: Record<number, number> = {
+  0: 0x9c_6b_3f, // plate
+  1: 0xc9_a3_6a, // stud
+  2: 0xd9_8f_4e, // king
+  3: 0xd9_8f_4e, // jack
+  4: 0xe0_b0_70, // cripple
+  5: 0xa0_5a_2c, // header
+  6: 0x9c_6b_3f, // sill
+  7: 0xb5_65_1d, // post
+};
+const DEFAULT_ROLE_COLOR = 0xc9_a3_6a;
+
+/** Local long-axis of a `BoxGeometry(width, length, width)` — its length runs +Y before rotation. */
+const BOX_LONG_AXIS = new Vector3(0, 1, 0);
 
 /** The kernel's top cap face index (`crates/geometry-kernel/src/brep.rs` `TOP_FACE`). The 3D view
  *  references the engine's named face — it never invents one (ADR 0008 §3). */
@@ -137,15 +160,39 @@ function disposeMass(handle: SceneHandle): void {
   handle.topMesh = null;
 }
 
+/** Add one solid box per framed member to `group` (ADR 0006/0012 display tessellation): each member's
+ *  world segment becomes a `BoxGeometry` oriented along the segment and colored by role. */
+function addMembers(group: Group, members: MemberMirror): void {
+  for (const box of memberBoxes(members.rows())) {
+    const geom = new BoxGeometry(box.width, box.length, box.width);
+    const mesh = new Mesh(
+      geom,
+      new MeshStandardMaterial({
+        color: ROLE_COLORS[box.roleId] ?? DEFAULT_ROLE_COLOR,
+        roughness: 0.7,
+        metalness: 0,
+      })
+    );
+    mesh.position.set(box.center.x, box.center.y, box.center.z);
+    mesh.quaternion.setFromUnitVectors(
+      BOX_LONG_AXIS,
+      new Vector3(box.dir.x, box.dir.y, box.dir.z)
+    );
+    group.add(mesh);
+  }
+}
+
 /**
- * (Re)build the mass mesh from the canonical footprint + height. The walls are an extruded prism
- * (footprint shape extruded +Y by `height`); the top cap is a **separate, named mesh** so push/pull
- * picking can identify it directly without a normal heuristic.
+ * (Re)build the mass mesh from the canonical footprint + height, plus the framed members inside it.
+ * The walls are an extruded prism (footprint shape extruded +Y by `height`); the top cap is a
+ * **separate, named mesh** so push/pull picking can identify it directly without a normal heuristic.
+ * Once framed, the shell drops to a faint hint so the framing reads while the top cap stays grabbable.
  */
 function rebuildMass(
   handle: SceneHandle,
   footprint: FootprintMirror | null,
-  volume: VolumeMirror | null
+  volume: VolumeMirror | null,
+  members: MemberMirror | null
 ): void {
   disposeMass(handle);
   if (!(footprint && volume) || volume.count < 1) {
@@ -160,6 +207,7 @@ function rebuildMass(
   handle.volumeId = vol.volumeId;
 
   const group = new Group();
+  const framed = (members?.count ?? 0) > 0;
 
   // Walls: extrude the footprint shape (in its local XY) then rotate so extrusion runs +Y (up).
   const wallGeom = new ExtrudeGeometry(shape, {
@@ -174,7 +222,8 @@ function rebuildMass(
     new MeshStandardMaterial({
       color: 0x6e_88_c8,
       transparent: true,
-      opacity: 0.55,
+      // Fade the shell to a faint hint once members are framed, so the studs read clearly.
+      opacity: framed ? 0.08 : 0.55,
       side: DoubleSide,
       roughness: 0.85,
     })
@@ -202,6 +251,12 @@ function rebuildMass(
     new LineBasicMaterial({ color: 0xbc_d0_ff })
   );
   group.add(edges);
+
+  // The framed perimeter: solid member boxes inside the shell (added to the same group so the
+  // existing dispose path tears them down too).
+  if (members && framed) {
+    addMembers(group, members);
+  }
 
   handle.scene.add(group);
   handle.massGroup = group;
@@ -365,14 +420,14 @@ export function ThreeView({ store }: ThreeViewProps) {
     };
   }, []);
 
-  // Rebuild effect: dispose+recreate the mass whenever the canonical mirrors change.
+  // Rebuild effect: dispose+recreate the mass + framing whenever the canonical mirrors change.
   useEffect(() => {
     const handle = handleRef.current;
     if (!handle) {
       return;
     }
-    rebuildMass(handle, store.footprint, store.volume);
-  }, [store.footprint, store.volume]);
+    rebuildMass(handle, store.footprint, store.volume, store.members);
+  }, [store.footprint, store.volume, store.members]);
 
   return <div className="three" ref={mountRef} />;
 }

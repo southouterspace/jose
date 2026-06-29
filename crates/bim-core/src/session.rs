@@ -11,8 +11,8 @@ use crate::buffer::{
 };
 use crate::command::{Command, DrawFootprint, DrawWall, PushPull};
 use building::{
-    AssemblyKind, FramingSolver, MemberPlacement, RuleSet, SpacingAnchor, SpacingKey,
-    SpacingModule, Wall, WallRole, frame_walls,
+    AssemblyKind, FramingRole, FramingSolver, Junction, MemberPlacement, RuleSet, SpacingAnchor,
+    SpacingKey, SpacingModule, Wall, WallRole, detect_junctions, frame_walls,
 };
 use building::{FaceRef, WallId};
 use geometry_kernel::{
@@ -215,25 +215,166 @@ impl Session {
         self.buffer.len()
     }
 
-    /// Rewrite the footprint + volume buffers from the current `footprint` ring and `volume`.
+    /// Rewrite the footprint + volume buffers from the current `footprint` ring and `volume`, then
+    /// re-frame the perimeter into the member buffer. One recompute writes all three buffers, so the
+    /// plan view (footprint), the 3D mass (footprint + volume), and the 3D framing (members) never
+    /// diverge — the single-recompute discipline of ADR 0008 §5, now extended to framing.
     fn rewrite_space_buffers(&mut self) {
         self.footprint_buffer.clear();
         self.volume_buffer.clear();
-        let Some(volume) = self.volume.as_ref() else {
-            return;
-        };
-        for &(x, y) in &self.footprint {
-            self.footprint_buffer.push(FootprintRow {
-                x,
-                y,
+        if let Some(volume) = self.volume.as_ref() {
+            for &(x, y) in &self.footprint {
+                self.footprint_buffer.push(FootprintRow {
+                    x,
+                    y,
+                    space_id: SPACE_ID,
+                });
+            }
+            self.volume_buffer.push(VolumeRow {
+                volume_id: VOLUME_ID,
                 space_id: SPACE_ID,
+                height: volume.height.raw(),
             });
         }
-        self.volume_buffer.push(VolumeRow {
-            volume_id: VOLUME_ID,
-            space_id: SPACE_ID,
-            height: volume.height.raw(),
-        });
+        self.recompute_framing();
+    }
+
+    /// Derive the perimeter walls from the current footprint ring (at the mass height), frame the
+    /// whole set with junction detailing, and rewrite the member buffer in **world** space.
+    ///
+    /// This is the ADR 0006 wall→world composition, run where it belongs — the composition root, not
+    /// the renderer. The [`FramingSolver`] emits each wall's studs/plates in *wall-local* elevation
+    /// (x along the baseline, z up) and resolves shared corner posts to *world* plan coordinates;
+    /// [`world_member_row`] maps the former onto the wall's world baseline and passes the latter
+    /// through. With no volume the buffer is cleared (nothing to frame).
+    fn recompute_framing(&mut self) {
+        self.buffer.clear();
+        if self.volume.is_none() {
+            return;
+        }
+        let height = self.volume.as_ref().map_or(Tick::ZERO, |v| v.height);
+        let walls = perimeter_walls(&self.footprint, height);
+        if walls.is_empty() {
+            return;
+        }
+        let rules = RuleSet::light_frame_wall(
+            SpecKey::from("SPF-STUD"),
+            SpecKey::from("SPF-PLATE"),
+            SpecKey::from("DF-HEADER"),
+        );
+        let junctions = detect_junctions(&walls);
+        self.framer = FramingSolver::new(); // stable ids per recompute; the buffer is the truth
+        for wall in &walls {
+            let mine: Vec<Junction> = junctions
+                .iter()
+                .filter(|j| j.walls.contains(&wall.id))
+                .cloned()
+                .collect();
+            let neighbors: Vec<Wall> = walls.iter().filter(|w| w.id != wall.id).cloned().collect();
+            let members = self
+                .framer
+                .frame(AssemblyKind::Wall, wall, &mine, &neighbors, &rules);
+            for member in &members {
+                self.buffer.push(world_member_row(wall, member));
+            }
+        }
+    }
+}
+
+/// Build one bearing perimeter wall per footprint edge (skipping any zero-length edge), each rising
+/// to the mass height and framed at 16in OC. The closed ring's consecutive edges share vertices, so
+/// junction detection finds the corners (the same shape the `frame_wall_set` rectangle test frames).
+fn perimeter_walls(ring: &[(i32, i32)], height: Tick) -> Vec<Wall> {
+    let n = ring.len();
+    if n < 3 {
+        return Vec::new();
+    }
+    let mut walls = Vec::new();
+    let mut id: u128 = 1;
+    for i in 0..n {
+        let (ax, ay) = ring[i];
+        let (bx, by) = ring[(i + 1) % n];
+        if ax == bx && ay == by {
+            continue; // degenerate edge — no wall
+        }
+        let baseline = Segment::new(
+            TickVec3::new(Tick(ax), Tick(ay), Tick::ZERO),
+            TickVec3::new(Tick(bx), Tick(by), Tick::ZERO),
+        );
+        walls.push(Wall::promote(
+            WallId(id),
+            FaceRef {
+                volume: EntityId(u128::from(VOLUME_ID)),
+                face_index: i as u32,
+            },
+            baseline,
+            height,
+            Tick(WALL_THICKNESS),
+            WallRole::Bearing,
+            spacing_module(16.0),
+        ));
+        id += 1;
+    }
+    walls
+}
+
+/// Map one wall-local placed member onto its wall's **world** baseline, as a render row.
+///
+/// The solver emits studs/plates in wall-local elevation — `origin.x` runs along the baseline,
+/// `origin.z` is up, `origin.y` (through-wall) is on the centerline — so a local point maps to world
+/// as `baseline.a + x·û + z·ẑ`, where `û` is the baseline's unit direction. Vertical members rise
+/// `length` along +Z; horizontal members run `length` along `û`. Corner posts are the one exception:
+/// the junction detailer already resolves them to world plan coordinates, so their origin passes
+/// through untransformed (they stand up +Z). Non-axis-aligned walls round `û` to the tick.
+fn world_member_row(wall: &Wall, member: &MemberPlacement) -> MemberRow {
+    let o = member.transform.origin;
+    let len = member.length.raw();
+
+    if member.role == FramingRole::Post {
+        return MemberRow {
+            x0: o.x.raw(),
+            y0: o.y.raw(),
+            z0: o.z.raw(),
+            x1: o.x.raw(),
+            y1: o.y.raw(),
+            z1: o.z.raw() + len,
+            width: NOMINAL_WIDTH,
+            role_id: member.role.id(),
+        };
+    }
+
+    let a = wall.baseline.a;
+    let dx = f64::from(wall.baseline.b.x.raw() - a.x.raw());
+    let dy = f64::from(wall.baseline.b.y.raw() - a.y.raw());
+    let mag = dx.hypot(dy);
+    let (ux, uy) = if mag > 0.0 {
+        (dx / mag, dy / mag)
+    } else {
+        (1.0, 0.0)
+    };
+    let along = f64::from(o.x.raw());
+    let x0 = a.x.raw() + (along * ux).round() as i32;
+    let y0 = a.y.raw() + (along * uy).round() as i32;
+    let z0 = o.z.raw();
+    let (x1, y1, z1) = if member.role.is_vertical() {
+        (x0, y0, z0 + len)
+    } else {
+        let l = f64::from(len);
+        (
+            x0 + (l * ux).round() as i32,
+            y0 + (l * uy).round() as i32,
+            z0,
+        )
+    };
+    MemberRow {
+        x0,
+        y0,
+        z0,
+        x1,
+        y1,
+        z1,
+        width: NOMINAL_WIDTH,
+        role_id: member.role.id(),
     }
 }
 
@@ -397,6 +538,84 @@ mod tests {
         assert_eq!(read_u32(vbytes, vol::VOLUME_ID_OFFSET, 0), 1);
         assert_eq!(read_u32(vbytes, vol::SPACE_ID_OFFSET, 0), 1);
         assert_eq!(read_i32(vbytes, vol::HEIGHT_OFFSET, 0), DEFAULT_HEIGHT);
+    }
+
+    #[test]
+    fn draw_footprint_frames_the_perimeter_in_world_space() {
+        // ADR 0006/0012: drawing a footprint now frames its perimeter walls, and the members land in
+        // WORLD space (not wall-local). A 10×12ft square has edges at y=0 and y=12ft, so studs must
+        // appear at both world-Y bands — proof the wall→world transform ran at the composition root.
+        let mut s = Session::new();
+        s.apply(Command::DrawFootprint(square_ring()));
+        assert!(s.member_count() > 0, "a drawn footprint frames members");
+
+        let bytes = s.buffer_bytes();
+        let stud_id = layout::role_id("stud").unwrap();
+        let post_id = layout::role_id("post").unwrap();
+        let role = |i: usize| read_u32(bytes, layout::ROLE_ID_OFFSET, i);
+        let y0 = |i: usize| read_i32(bytes, layout::Y0_OFFSET, i);
+
+        let twelve_ft = 12 * 384;
+        let mut studs_at_front = false; // y == 0 edge
+        let mut studs_at_back = false; // y == 12ft edge
+        for i in 0..s.member_count() {
+            if role(i) == stud_id {
+                if y0(i) == 0 {
+                    studs_at_front = true;
+                }
+                if y0(i) == twelve_ft {
+                    studs_at_back = true;
+                }
+            }
+        }
+        assert!(
+            studs_at_front && studs_at_back,
+            "studs are placed in world space along both the y=0 and y=12ft walls"
+        );
+
+        // Four CCW outside corners → California (3 posts) each, owner-only: 12 posts, one at (0,0).
+        let posts = (0..s.member_count())
+            .filter(|&i| role(i) == post_id)
+            .count();
+        assert_eq!(posts, 12, "four corners × 3 California posts, no doubling");
+        let post_at_origin = (0..s.member_count()).any(|i| {
+            role(i) == post_id
+                && read_i32(bytes, layout::X0_OFFSET, i) == 0
+                && read_i32(bytes, layout::Y0_OFFSET, i) == 0
+        });
+        assert!(
+            post_at_origin,
+            "a corner post stands at the world origin vertex"
+        );
+    }
+
+    #[test]
+    fn push_pull_reframes_taller_studs() {
+        // Pushing the top cap up must re-frame: studs get taller in the same recompute that grows the
+        // mass (one model, both the volume and the members move together).
+        let mut s = Session::new();
+        s.apply(Command::DrawFootprint(square_ring()));
+        let stud_id = layout::role_id("stud").unwrap();
+        let stud_height = |sess: &Session| -> i32 {
+            let bytes = sess.buffer_bytes();
+            for i in 0..sess.member_count() {
+                if read_u32(bytes, layout::ROLE_ID_OFFSET, i) == stud_id {
+                    return read_i32(bytes, layout::Z1_OFFSET, i)
+                        - read_i32(bytes, layout::Z0_OFFSET, i);
+                }
+            }
+            panic!("expected at least one stud");
+        };
+        let before = stud_height(&s);
+        s.apply(Command::PushPull(PushPull {
+            volume_id: 1,
+            face_index: TOP_FACE,
+            distance: 2 * 384, // +2ft
+        }));
+        assert!(
+            stud_height(&s) > before,
+            "a taller mass reframes taller studs"
+        );
     }
 
     #[test]

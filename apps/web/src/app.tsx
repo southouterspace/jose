@@ -63,9 +63,13 @@ function statusText(store: ReturnType<typeof useEngineStore>): string {
   }
   if (store.footprint && store.footprint.count >= 3) {
     const ft = store.volume ? heightFeet(store.volume) : null;
+    const framed =
+      (store.members?.count ?? 0) > 0
+        ? ` · ${store.members?.count} members framed`
+        : "";
     return ft === null
-      ? `Footprint: ${store.footprint.count} vertices`
-      : `Footprint: ${store.footprint.count} vertices · mass ${ft}ft tall`;
+      ? `Footprint: ${store.footprint.count} vertices${framed}`
+      : `Footprint: ${store.footprint.count} vertices · mass ${ft}ft tall${framed}`;
   }
   if (store.pendingPicks.length > 0) {
     return `Drawing footprint — ${store.pendingPicks.length} point(s); click the first to close`;

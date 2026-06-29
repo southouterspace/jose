@@ -1,6 +1,6 @@
 # ADR 0006 — World-space placement is produced by the engine, not the renderer
 
-- **Status:** Accepted — principle stands, but **implementation is deferred off the MVP critical path** per [ADR 0007](./0007-space-first-modeling-footprint-push-pull.md) (framing is a post-MVP derived layer; the first 3D slice renders the massing volume, not members).
+- **Status:** Accepted — **implementation landed** in [ADR 0012](./0012-framing-slice-world-space-members.md). (Originally deferred off the MVP critical path per [ADR 0007](./0007-space-first-modeling-footprint-push-pull.md); the wall→world composition described here is now realized at the `bim-core` composition root.)
 - **Date:** 2026-06-28
 - **Context doc:** [`docs/plans/repo-scaffold.md`](../plans/repo-scaffold.md) §5; extends the one-direction rule of [ADR 0003](./0003-wasm-boundary-and-the-buffer-layout-keystone.md)
 
