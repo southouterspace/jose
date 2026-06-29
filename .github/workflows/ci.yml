@@ -76,3 +76,35 @@ jobs:
       - name: Build the wasm boundary for wasm32
         run: cargo build -p bim-wasm --target wasm32-unknown-unknown
         if: hashFiles('crates/bim-wasm/Cargo.toml') != ''
+
+  wasm-types:
+    name: Web app vs real wasm types
+    runs-on: ubuntu-latest
+    # The `ts` job typechecks the web app against the hand-kept ambient mirror
+    # (apps/web/src/wasm/engine.d.ts), because the generated wasm-pack output is gitignored and
+    # absent on a fresh checkout. That catches app-vs-mirror drift but NOT mirror-vs-engine drift:
+    # a wrong ambient declaration would let bad app code typecheck green and only fail at runtime.
+    # This job closes that gap — it builds the real wasm package so the app typechecks against the
+    # actual #[wasm_bindgen] surface (the real bim_wasm.d.ts), which takes precedence over the
+    # wildcard ambient once present.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.11"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.94.1"
+          targets: wasm32-unknown-unknown
+      # Prebuilt wasm-pack binary (pinned), matching the version used locally; wasm-opt is disabled
+      # in the crate's Cargo.toml so this build downloads no binaryen and stays self-contained.
+      - uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: "v0.13.1"
+      - run: bun install --frozen-lockfile
+      - name: Build the real wasm package (generates bim_wasm.d.ts)
+        working-directory: apps/web
+        run: bun run build:wasm
+      - name: Typecheck the web app against the real wasm types
+        working-directory: apps/web
+        run: bun run typecheck
