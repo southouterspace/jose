@@ -47,12 +47,21 @@ then move it into a reference/rule/exemplar and delete it here.
 
 ## Deterministic checks
 
-- **No Jose-specific lint rules.** Only the Ultracite/Biome preset runs. Mechanically-checkable
-  product rules (e.g. `display-feet-not-ticks`, a canonical-noun check) are candidates for a custom
-  check but **are not built**. `rules.md` carries them as judgment for now.
+- **No Jose-specific lint rules.** Only the Ultracite/Biome preset runs (it already gates the
+  `[biome]`-tagged accessibility/anti-pattern rules in `web-interface-guidelines.md`).
+  Mechanically-checkable *product* rules (e.g. `display-feet-not-ticks`, a canonical-noun check) and
+  the `[gap]`-tagged web rules (`outline: none` without a focus replacement, `transition: all`,
+  literal `...`, `user-scalable=no`) are reliable custom-check candidates but **are not built** —
+  deferred until there's real surface to check (ADR 0011). `rules.md` and `web-interface-guidelines.md`
+  carry them as judgment for now.
 
 ## Process
 
 - **No evidence-intake loop running.** The `tooling/scripts/evals/` structure exists as scaffolding
   (fixtures + a rules checklist), but there is no weekly Slack/Figma/PR intake job and no eval runner
   wired into CI. The eval harness is a documented starting point, not an automated gate.
+- **The agent reviewers run in-session, not in CI.** `/web-interface-guidelines` and
+  `/react-best-practices` (via `/ci-local`) run locally under the session's Claude auth — no
+  `ANTHROPIC_API_KEY`, no Actions job (ADR 0011). The tradeoff: **there is no automatic PR gate** for
+  them; coverage depends on the habit of running `/ci-local` before pushing web changes. Not a
+  substitute for the offline evals.

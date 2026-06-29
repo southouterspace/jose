@@ -125,6 +125,7 @@ yet); and the responsive/large-value variants. See
 | Plan view (drawing the footprint) | [`references/surfaces-plan-view.md`](./references/surfaces-plan-view.md) |
 | 3D view (push/pull, orbit, picking) | [`references/surfaces-3d-view.md`](./references/surfaces-3d-view.md) |
 | Reusable interaction patterns | [`references/patterns.md`](./references/patterns.md) |
+| Keyboard, focus, animation, touch, typography, performance | [`references/web-interface-guidelines.md`](./references/web-interface-guidelines.md) |
 | Overflow, large values, units, network/error resilience | [`references/resilience.md`](./references/resilience.md) |
 | Deterministic rules with stable IDs | [`references/rules.md`](./references/rules.md) |
 | Where we have no standard yet | [`references/coverage-gaps.md`](./references/coverage-gaps.md) |

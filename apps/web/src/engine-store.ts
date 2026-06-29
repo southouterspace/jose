@@ -45,10 +45,14 @@ function send(worker: Worker, request: EngineRequest): void {
 /** Mount the engine worker and expose the shared store. One instance lives at the app root. */
 export function useEngineStore(): EngineStore {
   const workerRef = useRef<Worker | null>(null);
-  const runnerRef = useRef<ToolRunner>(new ToolRunner(undefined, "footprint"));
+  // Construct the ToolRunner once (lazy ref init) — useRef keeps only the first
+  // value, so a bare `useRef(new ToolRunner())` would build one on every render.
+  const runnerRef = useRef<ToolRunner | null>(null);
+  runnerRef.current ??= new ToolRunner(undefined, "footprint");
+  const runner = runnerRef.current;
 
   const [ready, setReady] = useState(false);
-  const [activeTool, setActiveTool] = useState(runnerRef.current.activeKey);
+  const [activeTool, setActiveTool] = useState(runner.activeKey);
   const [pendingPicks, setPendingPicks] = useState<
     readonly { x: number; y: number }[]
   >([]);
@@ -109,32 +113,35 @@ export function useEngineStore(): EngineStore {
     }
   }, []);
 
-  const activate = useCallback((toolKey: string): void => {
-    // `activeTool` is UI state spanning two kinds of tool: ToolRunner-backed *pick* tools (e.g.
-    // `footprint`, which collect plan clicks) and 3D-only *gesture* tools (`pushpull`, handled by
-    // three-view's drag — gated on `activeTool === "pushpull"`). The runner only knows its catalog
-    // keys, so forwarding a non-runner key throws ("unknown tool"). Branch on what the runner knows.
-    if (toolKey in TOOL_CATALOG) {
-      runnerRef.current.activate(toolKey);
-      setActiveTool(runnerRef.current.activeKey);
-    } else {
-      // A gesture tool: never reaches the runner. Cancel any in-progress footprint draw so the
-      // half-drawn ring doesn't linger, then set the UI state directly.
-      runnerRef.current.cancel();
-      setActiveTool(toolKey);
-    }
-    setPendingPicks([]);
-  }, []);
+  const activate = useCallback(
+    (toolKey: string): void => {
+      // `activeTool` is UI state spanning two kinds of tool: ToolRunner-backed *pick* tools (e.g.
+      // `footprint`, which collect plan clicks) and 3D-only *gesture* tools (`pushpull`, handled by
+      // three-view's drag — gated on `activeTool === "pushpull"`). The runner only knows its catalog
+      // keys, so forwarding a non-runner key throws ("unknown tool"). Branch on what the runner knows.
+      if (toolKey in TOOL_CATALOG) {
+        runner.activate(toolKey);
+        setActiveTool(runner.activeKey);
+      } else {
+        // A gesture tool: never reaches the runner. Cancel any in-progress footprint draw so the
+        // half-drawn ring doesn't linger, then set the UI state directly.
+        runner.cancel();
+        setActiveTool(toolKey);
+      }
+      setPendingPicks([]);
+    },
+    [runner]
+  );
 
   const pick = useCallback(
     (point: { x: number; y: number }): void => {
-      const command = runnerRef.current.pick(point);
-      setPendingPicks([...runnerRef.current.pendingPicks]);
+      const command = runner.pick(point);
+      setPendingPicks([...runner.pendingPicks]);
       if (command) {
         dispatch(command);
       }
     },
-    [dispatch]
+    [dispatch, runner]
   );
 
   const pushPull = useCallback(
