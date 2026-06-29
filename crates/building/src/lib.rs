@@ -25,7 +25,8 @@ mod application;
 mod domain;
 mod keys;
 
-pub use application::framing_solver::{AssemblyKind, FramingSolver, RuleSet};
+pub use application::framing_solver::{AssemblyKind, FramingSolver, RuleSet, frame_walls};
+pub use application::junction_detail::{DetailedPost, JunctionDetail, PlateLap, detail_junction};
 pub use application::junction_detector::{CornerRules, detect_junctions};
 pub use domain::assemblies::{AssemblyFace, Floor, RisePerRun, Roof, Sheathing};
 pub use domain::placement::{

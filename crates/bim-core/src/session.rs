@@ -12,7 +12,7 @@ use crate::buffer::{
 use crate::command::{Command, DrawFootprint, DrawWall, PushPull};
 use building::{
     AssemblyKind, FramingSolver, MemberPlacement, RuleSet, SpacingAnchor, SpacingKey,
-    SpacingModule, Wall, WallRole,
+    SpacingModule, Wall, WallRole, frame_walls,
 };
 use building::{FaceRef, WallId};
 use geometry_kernel::{
@@ -130,9 +130,31 @@ impl Session {
             SpecKey::from("SPF-PLATE"),
             SpecKey::from("DF-HEADER"),
         );
-        let members = self.framer.frame(AssemblyKind::Wall, &wall, &[], &rules);
+        let members = self
+            .framer
+            .frame(AssemblyKind::Wall, &wall, &[], &[], &rules);
 
         self.framer = FramingSolver::new(); // stable ids per recompute; the buffer is the truth
+        self.buffer.clear();
+        for member in &members {
+            self.buffer.push(member_row(member));
+        }
+        self.buffer.len()
+    }
+
+    /// Frame a **set** of walls end-to-end: detect their junctions, frame each wall with the
+    /// junctions + neighbours that couple it, and rewrite the member buffer with the collected
+    /// result. The multi-wall analogue of [`Session::draw_wall`]; corners (posts + lapped top
+    /// plates) only form when several walls meet, so this is the path that exercises ADR 0009 end
+    /// to end. Returns the new live member count.
+    pub fn frame_wall_set(&mut self, walls: &[Wall]) -> usize {
+        let rules = RuleSet::light_frame_wall(
+            SpecKey::from("SPF-STUD"),
+            SpecKey::from("SPF-PLATE"),
+            SpecKey::from("DF-HEADER"),
+        );
+        self.framer = FramingSolver::new(); // stable ids per recompute; the buffer is the truth
+        let members = frame_walls(&mut self.framer, AssemblyKind::Wall, walls, &rules);
         self.buffer.clear();
         for member in &members {
             self.buffer.push(member_row(member));
@@ -454,6 +476,62 @@ mod tests {
         }));
         assert_eq!(s.footprint_count(), 3);
         assert_eq!(s.volume_count(), 1);
+    }
+
+    #[test]
+    fn frame_wall_set_emits_corner_posts_end_to_end() {
+        use building::{Wall, WallId};
+        use geometry_kernel::{EntityId, Segment, Tick, TickVec3};
+
+        let ft = TICKS_PER_FOOT;
+        let mk = |id: u128, ax: i32, ay: i32, bx: i32, by: i32| {
+            Wall::promote(
+                WallId(id),
+                building::FaceRef {
+                    volume: EntityId(1),
+                    face_index: 0,
+                },
+                Segment::new(
+                    TickVec3::new(Tick(ax), Tick(ay), Tick(0)),
+                    TickVec3::new(Tick(bx), Tick(by), Tick(0)),
+                ),
+                Tick(8 * TICKS_PER_FOOT),
+                Tick(112),
+                building::WallRole::Bearing,
+                super::spacing_module(16.0),
+            )
+        };
+        // CCW 10ft square: four outside corners, each California (3 posts), owner-only.
+        let walls = [
+            mk(1, 0, 0, 10 * ft, 0),
+            mk(2, 10 * ft, 0, 10 * ft, 10 * ft),
+            mk(3, 10 * ft, 10 * ft, 0, 10 * ft),
+            mk(4, 0, 10 * ft, 0, 0),
+        ];
+        let mut s = Session::new();
+        let count = s.frame_wall_set(&walls);
+        assert!(count > 0);
+        assert_eq!(s.member_count(), count);
+
+        // Decode roleId out of the buffer; expect exactly 4 corners × 3 posts = 12, owner-only.
+        let bytes = s.buffer_bytes();
+        let post_id = layout::role_id("post").unwrap();
+        let read_role = |i: usize| {
+            u32::from_le_bytes(
+                bytes[layout::ROLE_ID_OFFSET + i * 4..layout::ROLE_ID_OFFSET + i * 4 + 4]
+                    .try_into()
+                    .unwrap(),
+            )
+        };
+        let posts = (0..s.member_count())
+            .filter(|&i| read_role(i) == post_id)
+            .count();
+        assert_eq!(posts, 12, "four California corners × 3 posts, no doubling");
+
+        // The single-wall draw path still works after a set frame (it replaces, not appends).
+        let single = s.apply(draw_10ft_wall());
+        assert!(single > 0);
+        assert_eq!(s.member_count(), single);
     }
 
     #[test]
