@@ -1,10 +1,10 @@
 # Web interface guidelines
 
-Adapted from Vercel's Web Interface Guidelines. **This file is the single source** for both the
-`/web-interface-guidelines` reviewer command and the advisory CI job
-([`.github/workflows/ui-review.yml`](../../../.github/workflows/ui-review.yml)) — they read these
-rules, they don't carry their own copy (DRY, the same one-source discipline as the MODEL). Load it
-for the keyboard/focus/forms/animation/touch/performance dimension of a review or implementation.
+Adapted from Vercel's Web Interface Guidelines. **This file is the single source** for the
+`/web-interface-guidelines` reviewer command (run in-session via `/ci-local`; ADR 0011) — the
+command reads these rules, it doesn't carry its own copy (DRY, the same one-source discipline as the
+MODEL). Load it for the keyboard/focus/forms/animation/touch/performance dimension of a review or
+implementation.
 
 ## Enforcement tiers
 

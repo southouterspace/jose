@@ -60,7 +60,8 @@ then move it into a reference/rule/exemplar and delete it here.
 - **No evidence-intake loop running.** The `tooling/scripts/evals/` structure exists as scaffolding
   (fixtures + a rules checklist), but there is no weekly Slack/Figma/PR intake job and no eval runner
   wired into CI. The eval harness is a documented starting point, not an automated gate.
-- **Advisory UI review exists but is gated on a secret.** `.github/workflows/ui-review.yml` runs the
-  `/web-interface-guidelines` reviewer on changed web files (advisory, non-blocking; ADR 0011). It
-  **skips cleanly until an `ANTHROPIC_API_KEY` repo secret is configured** — until then it produces no
-  findings. It is not a substitute for the offline evals.
+- **The agent reviewers run in-session, not in CI.** `/web-interface-guidelines` and
+  `/react-best-practices` (via `/ci-local`) run locally under the session's Claude auth — no
+  `ANTHROPIC_API_KEY`, no Actions job (ADR 0011). The tradeoff: **there is no automatic PR gate** for
+  them; coverage depends on the habit of running `/ci-local` before pushing web changes. Not a
+  substitute for the offline evals.
