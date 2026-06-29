@@ -46,6 +46,18 @@ pub enum JunctionType {
     Cross,
 }
 
+/// Which way a detected corner turns, derived from the drawing (never hand-tagged): **Outside**
+/// is a convex corner (the interior faces are on the inside of the turn — a rectangle's four
+/// corners), **Inside** is a concave/reentrant corner (the elbow of an L-shaped room). Selects
+/// the default detailing method. A `Tee` carries no sense in v1.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CornerSense {
+    /// Convex corner (interior on the inside of the turn).
+    Outside,
+    /// Concave/reentrant corner (interior on the outside of the turn).
+    Inside,
+}
+
 /// How the owner wall frames a shared post at a junction — selects how many members it emits.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum JunctionMethod {
@@ -70,6 +82,9 @@ pub struct Junction {
     pub owner_wall: WallRef,
     /// The framing method — selects member count.
     pub method: JunctionMethod,
+    /// For a `Corner`, whether it turns convex (`Outside`) or concave (`Inside`); `None` for a
+    /// `Tee` (no sense in v1). Derived from the drawing, never authored.
+    pub sense: Option<CornerSense>,
 }
 
 impl Junction {
@@ -104,6 +119,13 @@ pub struct Wall {
     pub openings: Vec<Opening>,
     /// Back-references to junctions this wall participates in.
     pub junction_refs: Vec<JunctionRef>,
+    /// Which side of the baseline (looking from `a` toward `b`) the wall's **interior face**
+    /// lies on — `true` = left (the +90° side of the baseline direction in plan). The outward-
+    /// framing rule says the drawn footprint is the interior face; corner *sense* (convex vs
+    /// concave) cannot be recovered from two bare segments, so it needs this. Plain Rust, not in
+    /// the SoA buffer. Defaults to `true` in [`Wall::promote`] (a CCW-drawn footprint has its
+    /// interior on the left of every edge).
+    pub interior_on_left: bool,
 }
 
 impl Wall {
@@ -132,6 +154,9 @@ impl Wall {
             spacing,
             openings: Vec::new(),
             junction_refs: Vec::new(),
+            // CCW footprint convention: interior on the left of each baseline. Adjust per wall
+            // when a footprint edge is drawn the other way.
+            interior_on_left: true,
         }
     }
 }
@@ -175,6 +200,7 @@ mod tests {
             walls: vec![WallId(1), WallId(2)],
             owner_wall: WallId(1),
             method: JunctionMethod::California,
+            sense: Some(CornerSense::Outside),
         };
         assert!(j.is_owner(WallId(1)));
         assert!(!j.is_owner(WallId(2)));

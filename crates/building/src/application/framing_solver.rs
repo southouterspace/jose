@@ -444,6 +444,7 @@ mod tests {
             walls: vec![WallId(1), WallId(2)],
             owner_wall: WallId(1),
             method: JunctionMethod::California,
+            sense: Some(crate::domain::wall::CornerSense::Outside),
         };
         let mut fs = FramingSolver::new();
         let owner = fs.frame(
