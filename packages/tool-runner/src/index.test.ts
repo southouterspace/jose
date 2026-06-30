@@ -166,3 +166,38 @@ test("push/pull distance honors the ticks-per-pixel scale and rounds to whole ti
   // -7px * 1.3 = 9.1 → rounds to 9 whole ticks.
   expect(pushPullDistance(-7, 1.3)).toBe(9);
 });
+
+test("axisLock snaps the new edge to the dominant axis relative to the previous pick", () => {
+  const runner = new ToolRunner(undefined, "footprint");
+  runner.pick({ x: 0, y: 0 });
+
+  // Mostly-horizontal move (|dx| > |dy|) with axis lock → Y collapses back to the anchor's Y.
+  expect(
+    runner.pick({ x: 10 * 384, y: 2 * 384 }, { axisLock: true })
+  ).toBeNull();
+  expect(runner.pendingPicks[1]).toEqual({ x: 10 * 384, y: 0 });
+
+  // Mostly-vertical move (|dy| > |dx|) with axis lock → X collapses back to the prior vertex's X.
+  runner.pick({ x: 9 * 384, y: 12 * 384 }, { axisLock: true });
+  expect(runner.pendingPicks[2]).toEqual({ x: 10 * 384, y: 12 * 384 });
+});
+
+test("axisLock is a no-op for the very first pick (no anchor to lock against)", () => {
+  const runner = new ToolRunner(undefined, "footprint");
+  runner.pick({ x: 3 * 384, y: 7 * 384 }, { axisLock: true });
+  expect(runner.pendingPicks[0]).toEqual({ x: 3 * 384, y: 7 * 384 });
+});
+
+test("the wall tool axis-locks its second pick to the first", () => {
+  const runner = new ToolRunner(); // wall tool by default
+  runner.pick({ x: 0, y: 0 });
+  // A near-horizontal second pick snaps onto the X axis of the first.
+  const command = runner.pick({ x: 8 * 384, y: 384 }, { axisLock: true });
+  expect(command).toMatchObject({
+    kind: "drawWall",
+    x0: 0,
+    y0: 0,
+    x1: 8 * 384,
+    y1: 0,
+  });
+});
