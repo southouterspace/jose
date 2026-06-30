@@ -115,6 +115,21 @@ export const DEFAULT_SETTINGS: ToolSettings = {
 const snapValue = (v: number, grid: number): number =>
   grid > 0 ? Math.round(v / grid) * grid : v;
 
+/** Per-pick modifiers the view supplies from the live input state (e.g. a held modifier key). */
+export interface PickOptions {
+  /** Constrain this pick onto the dominant axis (world-X or world-Y) relative to the previous pick,
+   *  so the new segment runs orthogonally — the "hold Shift to draw straight" gesture. */
+  readonly axisLock?: boolean;
+}
+
+/** Lock a point onto the dominant axis relative to an anchor: keep whichever of X / Y moved further
+ *  and snap the other back to the anchor, so the segment runs straight along world-X or world-Y. */
+function constrainToAxis(p: Point, anchor: Point): Point {
+  return Math.abs(p.x - anchor.x) >= Math.abs(p.y - anchor.y)
+    ? { x: p.x, y: anchor.y }
+    : { x: anchor.x, y: p.y };
+}
+
 /**
  * The single drawing state machine. Holds the active tool, the accumulated snapped picks, and the
  * value-grammar settings. `pick` advances the tool and returns a [`Command`] the instant the tool
@@ -166,10 +181,17 @@ export class ToolRunner {
 
   /**
    * Register a world pick. Returns the emitted [`Command`] when this pick satisfies the active
-   * tool (and resets for the next operation), otherwise `null`.
+   * tool (and resets for the next operation), otherwise `null`. With `options.axisLock` the pick is
+   * constrained onto the dominant axis relative to the previous pick (hold-Shift straight drawing).
    */
-  pick(raw: Point): Command | null {
-    const snapped = this.snap(raw);
+  pick(raw: Point, options: PickOptions = {}): Command | null {
+    let snapped = this.snap(raw);
+    if (options.axisLock) {
+      const anchor = this.picks.at(-1);
+      if (anchor) {
+        snapped = constrainToAxis(snapped, anchor);
+      }
+    }
 
     if (this.active.commit === "ring") {
       // A near-first click with ≥3 vertices down closes the ring (and is itself the closing edge,

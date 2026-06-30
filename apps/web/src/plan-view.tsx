@@ -2,7 +2,8 @@
  * The plan view — the top-down (world XY), orthographic 2D drawing surface (ADR 0005 / CONTEXT.md).
  *
  * While the footprint tool is active, clicks add ring vertices and a click near the first closes the
- * ring, sending a `DrawFootprint` command into the worker. When the snapshot returns, this renders
+ * ring, sending a `DrawFootprint` command into the worker. Holding Shift while clicking locks the new
+ * edge to the X or Y axis (orthogonal drawing). When the snapshot returns, this renders
  * the footprint polygon **from the `FootprintMirror`** — the engine's canonical ring — never from
  * the raw clicks. The mid-draw polyline (`pendingPicks`) is transient UI only.
  */
@@ -102,7 +103,8 @@ export function PlanView({ store }: PlanViewProps) {
     const rect = svg.getBoundingClientRect();
     const px = ((event.clientX - rect.left) / rect.width) * VIEW_W;
     const py = ((event.clientY - rect.top) / rect.height) * VIEW_H;
-    store.pick({ x: wx(px), y: wy(py) });
+    // Hold Shift to lock the new edge to the X or Y axis relative to the previous vertex.
+    store.pick({ x: wx(px), y: wy(py) }, { axisLock: event.shiftKey });
   };
 
   const footprint = store.footprint;

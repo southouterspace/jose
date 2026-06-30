@@ -45,6 +45,11 @@ import { frameMass, TICKS_PER_UNIT } from "./mass-tessellation";
  *  references the engine's named face — it never invents one (ADR 0008 §3). */
 const TOP_FACE = 1;
 
+/** The engine's single space/volume id (`crates/bim-core/src/session.rs` `VOLUME_ID`). A flat,
+ *  not-yet-extruded face has no volume row, so the view names the id the engine assigns when the
+ *  first push/pull lifts the face into a mass. */
+const VOLUME_ID = 1;
+
 /** World ticks per screen pixel for the push/pull drag. ~6 ticks/px ≈ a comfortable drag feel. */
 const PUSHPULL_TICKS_PER_PIXEL = 6;
 
@@ -138,9 +143,12 @@ function disposeMass(handle: SceneHandle): void {
 }
 
 /**
- * (Re)build the mass mesh from the canonical footprint + height. The walls are an extruded prism
- * (footprint shape extruded +Y by `height`); the top cap is a **separate, named mesh** so push/pull
- * picking can identify it directly without a normal heuristic.
+ * (Re)build the mass mesh from the canonical footprint + height. A freshly drawn footprint carries
+ * **no volume** (the engine does not auto-extrude it, ADR 0008): it renders as the flat drawn face
+ * on the ground, outlined so it reads as a polygon. Once a push/pull lifts it, the same footprint
+ * gains walls (an extruded prism, +Y by `height`). The top cap is always a **separate, named mesh**
+ * — flat on the ground or the prism lid — so push/pull picking identifies it without a normal
+ * heuristic, and dragging it up is what extrudes the face into a mass.
  */
 function rebuildMass(
   handle: SceneHandle,
@@ -148,43 +156,57 @@ function rebuildMass(
   volume: VolumeMirror | null
 ): void {
   disposeMass(handle);
-  if (!(footprint && volume) || volume.count < 1) {
+  if (!footprint) {
     return;
   }
   const shape = footprintShape(footprint);
-  const vol = volume.row(0);
-  const heightUnits = vol.height / TICKS_PER_UNIT;
-  if (!shape || heightUnits <= 0) {
+  if (!shape) {
     return;
   }
-  handle.volumeId = vol.volumeId;
+
+  // Read the height from the volume when the face has been extruded; otherwise render flat (0) —
+  // the 3D view never auto-extrudes the drawn face.
+  const hasVolume = volume !== null && volume.count >= 1;
+  const vol = hasVolume ? volume.row(0) : null;
+  const heightTicks = vol ? vol.height : 0;
+  const heightUnits = heightTicks / TICKS_PER_UNIT;
+  handle.volumeId = vol ? vol.volumeId : VOLUME_ID;
 
   const group = new Group();
 
-  // Walls: extrude the footprint shape (in its local XY) then rotate so extrusion runs +Y (up).
-  const wallGeom = new ExtrudeGeometry(shape, {
-    depth: heightUnits,
-    bevelEnabled: false,
-  });
-  // The shape lives in XY and extrudes +Z; rotate -90° about X so the extrusion runs +Y (up).
-  // The shape's Y was pre-negated in footprintShape so world-Z = +footprint-Y after this rotation.
-  wallGeom.rotateX(-Math.PI / 2);
-  const wallMesh = new Mesh(
-    wallGeom,
-    new MeshStandardMaterial({
-      color: 0x6e_88_c8,
-      transparent: true,
-      opacity: 0.55,
-      side: DoubleSide,
-      roughness: 0.85,
-    })
-  );
-  group.add(wallMesh);
+  // Walls + their wireframe only once the face has been extruded into a prism (height > 0).
+  if (heightUnits > 0) {
+    // The shape lives in XY and extrudes +Z; rotate -90° about X so the extrusion runs +Y (up).
+    // The shape's Y was pre-negated in footprintShape so world-Z = +footprint-Y after this rotation.
+    const wallGeom = new ExtrudeGeometry(shape, {
+      depth: heightUnits,
+      bevelEnabled: false,
+    });
+    wallGeom.rotateX(-Math.PI / 2);
+    const wallMesh = new Mesh(
+      wallGeom,
+      new MeshStandardMaterial({
+        color: 0x6e_88_c8,
+        transparent: true,
+        opacity: 0.55,
+        side: DoubleSide,
+        roughness: 0.85,
+      })
+    );
+    group.add(wallMesh);
+    group.add(
+      new LineSegments(
+        new EdgesGeometry(wallGeom),
+        new LineBasicMaterial({ color: 0xbc_d0_ff })
+      )
+    );
+  }
 
-  // Top cap: a separate, named mesh at Y=height — the pickable push/pull face.
+  // The cap: the flat drawn face at ground level (height 0) or the prism lid at Y=height. Always
+  // the named, pickable push/pull face — dragging it up extrudes the face into a mass.
   const capGeom = new ShapeGeometry(shape);
   capGeom.rotateX(-Math.PI / 2); // lay flat on XZ
-  capGeom.translate(0, heightUnits, 0); // lift to the top
+  capGeom.translate(0, heightUnits, 0); // lift to the top (no lift when flat)
   const topMesh = new Mesh(
     capGeom,
     new MeshStandardMaterial({
@@ -196,12 +218,15 @@ function rebuildMass(
   topMesh.name = "top-cap";
   group.add(topMesh);
 
-  // Wireframe edges for legibility.
-  const edges = new LineSegments(
-    new EdgesGeometry(wallGeom),
-    new LineBasicMaterial({ color: 0xbc_d0_ff })
-  );
-  group.add(edges);
+  // Outline the flat face so it reads as a polygon; once extruded, the wall wireframe covers it.
+  if (heightUnits <= 0) {
+    group.add(
+      new LineSegments(
+        new EdgesGeometry(capGeom),
+        new LineBasicMaterial({ color: 0xbc_d0_ff })
+      )
+    );
+  }
 
   handle.scene.add(group);
   handle.massGroup = group;
@@ -211,7 +236,7 @@ function rebuildMass(
   // height-only push/pull, which must leave the camera where the user left it (possibly mid-orbit).
   const sig = footprintSignature(footprint);
   if (sig !== handle.footprintSig) {
-    frameView(handle, footprint, vol.height);
+    frameView(handle, footprint, heightTicks);
     handle.footprintSig = sig;
   }
 }

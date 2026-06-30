@@ -10,7 +10,12 @@ import {
   FootprintMirror,
   VolumeMirror,
 } from "@jose/render-mirror";
-import { type Command, TOOL_CATALOG, ToolRunner } from "@jose/tool-runner";
+import {
+  type Command,
+  type PickOptions,
+  TOOL_CATALOG,
+  ToolRunner,
+} from "@jose/tool-runner";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { EngineRequest, EngineResponse } from "./protocol";
 
@@ -24,8 +29,12 @@ export interface EngineStore {
   readonly footprint: FootprintMirror | null;
   /** The mid-draw picks for the active tool (transient UI; never canonical geometry). */
   readonly pendingPicks: readonly { x: number; y: number }[];
-  /** Register a snapped world pick on the active tool; emits a command into the worker on commit. */
-  readonly pick: (point: { x: number; y: number }) => void;
+  /** Register a snapped world pick on the active tool; emits a command into the worker on commit.
+   *  `options.axisLock` constrains the pick to the X/Y axis of the prior pick (hold-Shift drawing). */
+  readonly pick: (
+    point: { x: number; y: number },
+    options?: PickOptions
+  ) => void;
   /** Dispatch a push/pull on a volume's top cap (the 3D view's gesture output). */
   readonly pushPull: (
     volumeId: number,
@@ -134,8 +143,8 @@ export function useEngineStore(): EngineStore {
   );
 
   const pick = useCallback(
-    (point: { x: number; y: number }): void => {
-      const command = runner.pick(point);
+    (point: { x: number; y: number }, options?: PickOptions): void => {
+      const command = runner.pick(point, options);
       setPendingPicks([...runner.pendingPicks]);
       if (command) {
         dispatch(command);

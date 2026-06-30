@@ -16,16 +16,13 @@ use building::{
 };
 use building::{FaceRef, WallId};
 use geometry_kernel::{
-    EntityId, GeometryKernel, Path2D, Plane, PushPullMode, PushPullOp, Segment, TICKS_PER_FOOT,
-    TOP_FACE, Tick, TickVec2, TickVec3, UnitVec3, Volume,
+    EntityId, GeometryKernel, Path2D, Plane, PushPullMode, PushPullOp, Segment, TOP_FACE, Tick,
+    TickVec2, TickVec3, UnitVec3, Volume,
 };
 use materials::SpecKey;
 
 /// Nominal framed wall thickness — a 2x4 wall = 3.5in = 112 ticks.
 const WALL_THICKNESS: i32 = 112;
-
-/// The default mass height a fresh footprint is extruded to: 8 ft.
-const DEFAULT_HEIGHT: i32 = 8 * TICKS_PER_FOOT;
 
 /// The single space/volume id for the MVP (one space at a time, like DrawWall's single wall).
 const SPACE_ID: u32 = 1;
@@ -162,66 +159,88 @@ impl Session {
         self.buffer.len()
     }
 
-    /// Draw (or redraw) the current space's footprint: store the closed ring, extrude it +Z from
-    /// the ground plane to [`DEFAULT_HEIGHT`], and rewrite the footprint + volume buffers. Replaces
-    /// any prior space (one space at a time, mirroring DrawWall's redraw-replaces behavior). A
-    /// degenerate ring the kernel refuses to extrude leaves the volume `None` and its buffer empty.
+    /// Draw (or redraw) the current space's footprint: store the closed ring as a **flat face** and
+    /// rewrite the footprint buffer. The face is deliberately **not** extruded — it carries no
+    /// volume until a push/pull lifts it (see [`Session::push_pull`]), so the 3D view shows the
+    /// drawn face flat rather than auto-extruding it. Replaces any prior space, clearing any volume
+    /// the prior footprint had been extruded into (one space at a time, mirroring DrawWall's
+    /// redraw-replaces behavior).
     fn draw_footprint(&mut self, draw: DrawFootprint) -> usize {
         self.footprint = draw.vertices;
+        self.volume = None;
+        self.rewrite_space_buffers();
+        self.buffer.len()
+    }
+
+    /// Extrude the current footprint ring into a prism `height` ticks tall, from the ground plane
+    /// along +Z. Returns `None` for a degenerate ring the kernel refuses (or a non-positive height).
+    fn extrude_footprint(&self, height: Tick) -> Option<Volume> {
         let profile = Path2D::closed(
             self.footprint
                 .iter()
                 .map(|&(x, y)| TickVec2::new(Tick(x), Tick(y)))
                 .collect(),
         );
-        self.volume = self.kernel.extrude(
+        self.kernel.extrude(
             EntityId(u128::from(VOLUME_ID)),
             profile,
             Plane::xy(TickVec3::ZERO),
             UnitVec3::Z,
-            Tick(DEFAULT_HEIGHT),
-        );
-        self.rewrite_space_buffers();
-        self.buffer.len()
+            height,
+        )
     }
 
-    /// Push/pull the current volume's top cap by a signed tick distance. Rejects a non-top
-    /// `face_index` before touching the kernel; on a kernel `None` (non-top face, or height would
-    /// go <= 0) leaves state unchanged. On success rewrites the volume buffer.
+    /// Push/pull the current space's top cap by a signed tick distance. Rejects a non-top
+    /// `face_index` before touching the kernel. The first positive push on a freshly drawn (flat)
+    /// footprint **extrudes** it into a volume of that height; later pushes grow or shrink the
+    /// existing volume. A kernel `None` (degenerate ring, non-top face, or a height driven <= 0)
+    /// leaves state unchanged. On success rewrites the volume buffer.
     fn push_pull(&mut self, op: PushPull) -> usize {
         if op.face_index != TOP_FACE {
             return self.buffer.len();
         }
-        let Some(volume) = self.volume.as_mut() else {
-            return self.buffer.len();
-        };
-        let (mode, magnitude) = if op.distance >= 0 {
-            (PushPullMode::Extrude, op.distance)
-        } else {
-            (PushPullMode::Inset, -op.distance)
-        };
-        let applied = self.kernel.apply_push_pull(
-            volume,
-            PushPullOp {
-                target_face_volume: EntityId(u128::from(op.volume_id)),
-                target_face_index: op.face_index,
-                distance: Tick(magnitude),
-                mode,
-            },
-        );
-        if applied.is_some() {
-            self.rewrite_space_buffers();
+        match self.volume.as_mut() {
+            // An existing volume: grow (extrude) or shrink (inset) its height.
+            Some(volume) => {
+                let (mode, magnitude) = if op.distance >= 0 {
+                    (PushPullMode::Extrude, op.distance)
+                } else {
+                    (PushPullMode::Inset, -op.distance)
+                };
+                let applied = self.kernel.apply_push_pull(
+                    volume,
+                    PushPullOp {
+                        target_face_volume: EntityId(u128::from(op.volume_id)),
+                        target_face_index: op.face_index,
+                        distance: Tick(magnitude),
+                        mode,
+                    },
+                );
+                if applied.is_some() {
+                    self.rewrite_space_buffers();
+                }
+            }
+            // A flat face has no volume yet: the first positive push lifts it into a prism. A
+            // non-positive distance can't lower a zero-height face, so it leaves the face flat.
+            None => {
+                if op.distance <= 0 {
+                    return self.buffer.len();
+                }
+                self.volume = self.extrude_footprint(Tick(op.distance));
+                if self.volume.is_some() {
+                    self.rewrite_space_buffers();
+                }
+            }
         }
         self.buffer.len()
     }
 
-    /// Rewrite the footprint + volume buffers from the current `footprint` ring and `volume`.
+    /// Rewrite the footprint + volume buffers from the current `footprint` ring and `volume`. The
+    /// footprint rows are always written (the flat face is canonical the instant it is drawn); the
+    /// single volume row is written only once the face has been extruded.
     fn rewrite_space_buffers(&mut self) {
         self.footprint_buffer.clear();
         self.volume_buffer.clear();
-        let Some(volume) = self.volume.as_ref() else {
-            return;
-        };
         for &(x, y) in &self.footprint {
             self.footprint_buffer.push(FootprintRow {
                 x,
@@ -229,11 +248,13 @@ impl Session {
                 space_id: SPACE_ID,
             });
         }
-        self.volume_buffer.push(VolumeRow {
-            volume_id: VOLUME_ID,
-            space_id: SPACE_ID,
-            height: volume.height.raw(),
-        });
+        if let Some(volume) = self.volume.as_ref() {
+            self.volume_buffer.push(VolumeRow {
+                volume_id: VOLUME_ID,
+                space_id: SPACE_ID,
+                height: volume.height.raw(),
+            });
+        }
     }
 }
 
@@ -373,8 +394,8 @@ mod tests {
     }
 
     #[test]
-    fn draw_footprint_populates_footprint_and_volume() {
-        use crate::layout::{footprint as fp, volume as vol};
+    fn draw_footprint_populates_face_without_extruding() {
+        use crate::layout::footprint as fp;
         let mut s = Session::new();
         s.apply(Command::DrawFootprint(square_ring()));
 
@@ -390,48 +411,69 @@ mod tests {
             assert_eq!(read_u32(fbytes, fp::SPACE_ID_OFFSET, i), 1);
         }
 
-        // volume: exactly one row with the default height, volumeId 1, spaceId 1.
+        // The drawn face is flat until a push/pull lifts it: no volume row yet.
+        assert_eq!(s.volume_count(), 0);
+    }
+
+    #[test]
+    fn push_pull_extrudes_flat_face_then_grows() {
+        use crate::layout::volume as vol;
+        let mut s = Session::new();
+        s.apply(Command::DrawFootprint(square_ring()));
+
+        // The first positive push lifts the flat face into a volume of exactly that height.
+        let first = 2 * 384; // 2ft
+        s.apply(Command::PushPull(PushPull {
+            volume_id: 1,
+            face_index: TOP_FACE,
+            distance: first,
+        }));
         assert_eq!(s.volume_count(), 1);
         let vbytes = s.volume_bytes();
         assert_eq!(vbytes.len(), vol::BUFFER_BYTES);
         assert_eq!(read_u32(vbytes, vol::VOLUME_ID_OFFSET, 0), 1);
         assert_eq!(read_u32(vbytes, vol::SPACE_ID_OFFSET, 0), 1);
-        assert_eq!(read_i32(vbytes, vol::HEIGHT_OFFSET, 0), DEFAULT_HEIGHT);
-    }
+        assert_eq!(read_i32(vbytes, vol::HEIGHT_OFFSET, 0), first);
 
-    #[test]
-    fn push_pull_extrude_increases_height() {
-        use crate::layout::volume as vol;
-        let mut s = Session::new();
-        s.apply(Command::DrawFootprint(square_ring()));
-        let n = 2 * 384; // +2ft
+        // A second push grows the existing volume.
+        let more = 384; // +1ft
         s.apply(Command::PushPull(PushPull {
             volume_id: 1,
             face_index: TOP_FACE,
-            distance: n,
+            distance: more,
         }));
         assert_eq!(
             read_i32(s.volume_bytes(), vol::HEIGHT_OFFSET, 0),
-            DEFAULT_HEIGHT + n
+            first + more
         );
     }
 
     #[test]
-    fn push_pull_inset_and_floor() {
+    fn push_pull_inset_does_not_lift_flat_face_and_floors() {
         use crate::layout::volume as vol;
         let mut s = Session::new();
         s.apply(Command::DrawFootprint(square_ring()));
 
-        // A negative distance lowers the height.
+        // A negative push on a flat face can't lower it below ground: it stays flat (no volume).
         s.apply(Command::PushPull(PushPull {
             volume_id: 1,
             face_index: TOP_FACE,
             distance: -384, // -1ft
         }));
-        assert_eq!(
-            read_i32(s.volume_bytes(), vol::HEIGHT_OFFSET, 0),
-            DEFAULT_HEIGHT - 384
-        );
+        assert_eq!(s.volume_count(), 0);
+
+        // Extrude to 3ft, then inset 1ft down to 2ft.
+        s.apply(Command::PushPull(PushPull {
+            volume_id: 1,
+            face_index: TOP_FACE,
+            distance: 3 * 384,
+        }));
+        s.apply(Command::PushPull(PushPull {
+            volume_id: 1,
+            face_index: TOP_FACE,
+            distance: -384,
+        }));
+        assert_eq!(read_i32(s.volume_bytes(), vol::HEIGHT_OFFSET, 0), 2 * 384);
         let after_inset = read_i32(s.volume_bytes(), vol::HEIGHT_OFFSET, 0);
 
         // A distance that would drive height <= 0 is refused by the kernel; state unchanged.
@@ -448,7 +490,6 @@ mod tests {
 
     #[test]
     fn push_pull_rejects_non_top_face() {
-        use crate::layout::volume as vol;
         use geometry_kernel::BASE_FACE;
         let mut s = Session::new();
         s.apply(Command::DrawFootprint(square_ring()));
@@ -457,17 +498,23 @@ mod tests {
             face_index: BASE_FACE, // not the top cap
             distance: 5 * 384,
         }));
-        assert_eq!(
-            read_i32(s.volume_bytes(), vol::HEIGHT_OFFSET, 0),
-            DEFAULT_HEIGHT
-        );
+        // A non-top face never extrudes the flat face.
+        assert_eq!(s.volume_count(), 0);
     }
 
     #[test]
-    fn redraw_footprint_replaces() {
+    fn redraw_footprint_replaces_and_resets_to_flat() {
         let mut s = Session::new();
         s.apply(Command::DrawFootprint(square_ring()));
         assert_eq!(s.footprint_count(), 4);
+
+        // Extrude the square, then redraw: the new face starts flat again (volume cleared).
+        s.apply(Command::PushPull(PushPull {
+            volume_id: 1,
+            face_index: TOP_FACE,
+            distance: 4 * 384,
+        }));
+        assert_eq!(s.volume_count(), 1);
 
         // A triangle (3 vertices) must replace, not append, the prior 4-vertex square.
         let ft = 384;
@@ -475,7 +522,7 @@ mod tests {
             vertices: vec![(0, 0), (8 * ft, 0), (4 * ft, 8 * ft)],
         }));
         assert_eq!(s.footprint_count(), 3);
-        assert_eq!(s.volume_count(), 1);
+        assert_eq!(s.volume_count(), 0);
     }
 
     #[test]
