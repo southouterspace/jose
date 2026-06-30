@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
 import {
   DEFAULT_SETTINGS,
+  formatLength,
+  inferAlignment,
+  parseLength,
+  pointAtDistance,
   pushPullDistance,
   TOOL_CATALOG,
   ToolRunner,
@@ -200,4 +204,107 @@ test("the wall tool axis-locks its second pick to the first", () => {
     x1: 8 * 384,
     y1: 0,
   });
+});
+
+test("parseLength reads feet/inches grammar into ticks (1ft=384, 1in=32)", () => {
+  expect(parseLength("10")).toBe(10 * 384); // bare number = feet
+  expect(parseLength("10.5")).toBe(Math.round(10.5 * 384));
+  expect(parseLength("10'")).toBe(10 * 384);
+  expect(parseLength("10' 6\"")).toBe(10 * 384 + 6 * 32);
+  expect(parseLength("10'6")).toBe(10 * 384 + 6 * 32); // trailing number = inches
+  expect(parseLength('6"')).toBe(6 * 32);
+  expect(parseLength("6in")).toBe(6 * 32);
+  expect(parseLength("3ft 7in")).toBe(3 * 384 + 7 * 32);
+});
+
+test("parseLength rejects empty, non-numeric, and non-positive input", () => {
+  expect(parseLength("")).toBeNull();
+  expect(parseLength("   ")).toBeNull();
+  expect(parseLength("abc")).toBeNull();
+  expect(parseLength("0")).toBeNull();
+  expect(parseLength("-5")).toBeNull();
+});
+
+test("formatLength renders ticks as feet and inches", () => {
+  expect(formatLength(12 * 384)).toBe(`12' 0"`);
+  expect(formatLength(0)).toBe(`0' 0"`);
+  expect(formatLength(384 + 6 * 32)).toBe(`1' 6"`); // 1ft 6in
+});
+
+test("pointAtDistance places a point an exact distance along the cursor direction", () => {
+  // Cursor 100 ticks east, length 5ft (1920 ticks) → exactly 1920 east of the anchor.
+  expect(pointAtDistance({ x: 0, y: 0 }, { x: 100, y: 0 }, 1920)).toEqual({
+    x: 1920,
+    y: 0,
+  });
+  // A diagonal direction scales to the requested length (3-4-5: dir (3,4), len 5 → (3,4)).
+  expect(pointAtDistance({ x: 0, y: 0 }, { x: 30, y: 40 }, 5)).toEqual({
+    x: 3,
+    y: 4,
+  });
+  // axisLock collapses the off-axis component before scaling.
+  expect(
+    pointAtDistance({ x: 0, y: 0 }, { x: 100, y: 20 }, 1920, true)
+  ).toEqual({ x: 1920, y: 0 });
+  // A zero-length direction still yields a segment (defaults to +X).
+  expect(pointAtDistance({ x: 5, y: 5 }, { x: 5, y: 5 }, 384)).toEqual({
+    x: 389,
+    y: 5,
+  });
+});
+
+test("inferAlignment snaps a point onto an existing vertex's row/column within tolerance", () => {
+  const vertices = [
+    { x: 0, y: 0 },
+    { x: 3840, y: 0 },
+  ];
+  // Cursor near the column of vertex 0 (x≈0) and the row of vertex 1 (y≈0): snaps both, two guides.
+  const result = inferAlignment({ x: 40, y: 30 }, vertices, 120);
+  expect(result.point).toEqual({ x: 0, y: 0 });
+  expect(result.guides).toContainEqual({
+    orientation: "vertical",
+    atTicks: 0,
+    sourceIndex: 0,
+  });
+  expect(result.guides).toContainEqual({
+    orientation: "horizontal",
+    atTicks: 0,
+    sourceIndex: 0,
+  });
+});
+
+test("inferAlignment leaves a point alone when no vertex is within tolerance", () => {
+  const result = inferAlignment({ x: 5000, y: 5000 }, [{ x: 0, y: 0 }], 120);
+  expect(result.point).toEqual({ x: 5000, y: 5000 });
+  expect(result.guides).toHaveLength(0);
+});
+
+test("draft previews the resolved point and close target without committing", () => {
+  const runner = new ToolRunner(undefined, "footprint");
+  runner.pick({ x: 0, y: 0 });
+  runner.pick({ x: 3840, y: 0 });
+  runner.pick({ x: 3840, y: 3072 });
+
+  // Hovering near the first vertex (≥3 down) previews a closing draft snapped onto it — no commit.
+  const closing = runner.draft({ x: 40, y: 40 });
+  expect(closing.closing).toBe(true);
+  expect(closing.point).toEqual({ x: 0, y: 0 });
+  expect(runner.pendingPicks).toHaveLength(3); // draft must not mutate the in-progress picks
+});
+
+test("draft surfaces alignment guides toward existing vertices", () => {
+  const runner = new ToolRunner(undefined, "footprint");
+  runner.pick({ x: 0, y: 0 });
+  // Cursor roughly above the first vertex's column → a vertical guide snapping x back to 0.
+  const aligned = runner.draft({ x: 24, y: 3000 });
+  expect(aligned.point.x).toBe(0);
+  expect(aligned.guides.some((g) => g.orientation === "vertical")).toBe(true);
+});
+
+test("an exact pick bypasses grid snap so a typed length is honored", () => {
+  const runner = new ToolRunner(undefined, "footprint");
+  runner.pick({ x: 0, y: 0 });
+  // 5ft (1920 ticks) is on-grid; nudge by 7 ticks to prove exact entry is not re-snapped to 1in.
+  runner.pick({ x: 1927, y: 0 }, { exact: true });
+  expect(runner.pendingPicks[1]).toEqual({ x: 1927, y: 0 });
 });

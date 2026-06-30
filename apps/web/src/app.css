@@ -79,6 +79,12 @@ body {
   background: #232328;
 }
 
+.plan__wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
 .plan {
   display: block;
   width: 100%;
@@ -98,14 +104,107 @@ body {
   stroke-dasharray: 6 4;
 }
 
+/* Dashed alignment guides: inline/perpendicular to existing vertices. Quiet, so they read as hints. */
+.plan__guide {
+  opacity: 0.8;
+  stroke: #d98c5f;
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+}
+
+/* Rubber-band segment from the last vertex to the live cursor. */
+.plan__rubber {
+  stroke: #6ea8fe;
+  stroke-width: 1.5;
+  stroke-dasharray: 2 4;
+}
+
+.plan__cursor {
+  fill: none;
+  stroke: #cfe0ff;
+  stroke-width: 1.5;
+}
+
 .plan__vertex {
   fill: #6ea8fe;
+}
+
+/* Live dimension readout (feet/inches) trailing the cursor. */
+.plan__dim {
+  font-size: 11px;
+  font-weight: 600;
+  fill: #cfe0ff;
+  stroke: #1b1b1f;
+  stroke-width: 3px;
+  paint-order: stroke;
+}
+
+/* Close target: a halo + label on the first vertex when a click would close the ring. */
+.plan__close circle {
+  fill: rgb(122 222 160 / 22%);
+  stroke: #7adea0;
+  stroke-width: 2;
+}
+
+.plan__close text {
+  font-size: 11px;
+  font-weight: 600;
+  fill: #7adea0;
+  stroke: #1b1b1f;
+  stroke-width: 3px;
+  paint-order: stroke;
 }
 
 .plan__footprint {
   fill: rgb(110 168 254 / 18%);
   stroke: #6ea8fe;
   stroke-width: 2;
+}
+
+/* Value-entry box (SketchUp-style measurement box), docked bottom-right of the plan view. */
+.plan__measure {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.78rem;
+  background: rgb(32 32 36 / 92%);
+  border: 1px solid #3a3a40;
+  border-radius: 5px;
+  opacity: 0.55;
+  transition: opacity 120ms ease;
+}
+
+.plan__measure[data-active="true"] {
+  opacity: 1;
+}
+
+.plan__measure-label {
+  color: #9aa;
+  letter-spacing: 0.04em;
+}
+
+.plan__measure-input {
+  width: 6.5rem;
+  padding: 0.2rem 0.35rem;
+  font: inherit;
+  color: #e8e8ea;
+  background: #1b1b1f;
+  border: 1px solid #3a3a40;
+  border-radius: 3px;
+}
+
+.plan__measure-input:focus-visible {
+  outline: 2px solid #6ea8fe;
+  outline-offset: 1px;
+}
+
+.plan__measure-input:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 .three {
