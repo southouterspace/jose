@@ -83,7 +83,7 @@ Grounded in the current code (`packages/tool-runner`, `apps/web/src/plan-view.ts
 | SketchUp pillar | Jose today | Evidence |
 |---|---|---|
 | **1.1 Inference** | **Partial — surprisingly good.** Grid snap, `Shift` axis-lock, alignment-guide inference to existing vertices' rows/cols, ring-close snap all exist in `tool-runner`. Missing: midpoint/edge/intersection snap, parallel/perpendicular, colored point cues, arrow-key axis lock. | `tool-runner/src/index.ts` (`inferAlignment`, axis lock, `gridTicks`) |
-| **1.2 VCB / typed dimension** | **Partial.** Plan view has a SketchUp-style length box (`parseLength`, feet/inches). Missing: typed **angle**, typed **rectangle W,D**, and typed **height** in 3D push/pull (gesture-only). | `plan-view.tsx` value box; `three-view.tsx` (no numeric height) |
+| **1.2 VCB / typed dimension** | **Partial.** Plan view has a SketchUp-style length box (`parseLength`, feet/inches) **and** a live length label on the rubber-band segment (`plan__dim`). Missing: typed/live **angle**, persistent **length labels on committed edges**, typed **rectangle W,D**, and any **height readout or typed height** in 3D push/pull (gesture-only, no on-screen distance). | `plan-view.tsx` (`plan__dim`, value box); `three-view.tsx` (no readout at all) |
 | **1.3 Modifiers / array** | **Missing.** No Move/Copy, no array, no modifier verbs beyond `Shift` axis-lock. | — |
 | **1.4 Push/Pull** | **Built (top-cap only).** Raycast top cap → drag → `PushPull`. Any-face deferred by ADR 0007 §3. | `three-view.tsx`, `command.rs` |
 | **1.5 Faces / topology** | **Built for the one case.** Close ring → footprint face → extrude to mass. General carving needs BREP (deferred). | `session.rs`, ADR 0007 |
@@ -98,6 +98,62 @@ layer** — plus the resilience states.
 
 ---
 
+## 2b. Two cross-cutting concerns (the UI must carry the new tools)
+
+These are not one more row in the tier list — they are the substrate every future tool rides on. If
+they aren't built as a *framework*, each added tool re-wires the chrome by hand and the UI rots.
+
+### 2b.1 Live measurement feedback — the in-canvas HUD
+
+The single most important thing a drawing UI does is **tell you what you're about to make, before
+you commit it.** You place a point; you must see not just the line but its **length and angle**;
+you push/pull and you must see the **live distance**. Today this is uneven:
+
+- **Plan view:** the rubber-band segment *does* show a live length (`plan__dim`). But there's **no
+  angle**, **no length on committed footprint edges**, and no running perimeter/area.
+- **3D view:** push/pull has **no distance readout whatsoever** — you drag the cap blind. This is the
+  concrete gap: you should see the height accumulating (e.g. `8' 1"`) pinned to the cursor/cap as you
+  drag, and be able to type it.
+
+Treat the HUD as **one shared concern**, not per-tool text nodes:
+- **Ephemeral overlays** anchored to the gesture: length + angle on the active segment; distance on
+  the active push/pull; a snap/inference badge ("Endpoint", "On edge", "Parallel") when the inference
+  engine fires.
+- **Persistent labels** on committed geometry: edge lengths on the footprint (toggleable), overall
+  width×depth, height on the mass.
+- **One place to render it.** Plan is SVG (`<text>`), 3D needs an overlay layer (CSS/`CSS2DRenderer`
+  billboards, or an HTML layer over the canvas). Pick one 3D-label mechanism now so push/pull,
+  dimensions, and selection tags all reuse it — don't grow three.
+- **The typed value and the live readout are the same channel.** The live length *is* the VCB
+  placeholder already (`plan-view.tsx`); keep that identity as it extends to angle and to 3D height.
+
+### 2b.2 A tool-chrome framework — adding a tool should be declarative
+
+`tool-runner` already has the right backbone: `TOOL_CATALOG` is a data-driven registry, and adding a
+tool is "a row + a `commit()` case" engine-side. The **front-end chrome around it is not yet a
+framework** — the toolbar, status copy, cursor, value box, and canvas overlays are hand-wired for
+footprint and push/pull specifically. Before piling on Rectangle, Move, Openings, etc., make the UI
+consume a tool's declaration so a new tool lights up the whole chrome for free. A tool should
+declare, in one place:
+
+- **Toolbar presence:** label, icon, enabled-predicate (push/pull is already gated on "a mass
+  exists" — generalize that).
+- **Status-bar copy** per phase ("Click first corner" → "Click opposite corner"), so the contextual
+  status line is data, not `if (tool === …)` ladders.
+- **Cursor** and **which surface(s)** it's active on (plan, 3D, or both).
+- **VCB semantics:** what a typed value *means* for this tool (length? angle? W,D? height? array
+  `5x`?) and how it commits.
+- **Canvas overlays / affordances** it contributes (rubber-band, guides, the grabbable-cap
+  highlight, HUD labels from 2b.1).
+- **Keybinding** (single-key tool switch, SketchUp-style: `L`, `R`, `P`, `M`…).
+
+This is the concrete meaning of "the UI properly supports new tool additions": the registry that
+exists engine-side should have a front-end twin, and the HUD (2b.1), status bar, and toolbar should
+all read from it. Build it *now*, while there are only two tools to migrate, not after there are
+eight.
+
+---
+
 ## 3. Prioritized must-have feature list
 
 Tiers are ordered by "does the tool feel broken/frustrating without it" → "does it deliver the
@@ -105,6 +161,12 @@ SketchUp magic" → "does it unlock the reason this is a *framing* tool." Each i
 lands.
 
 ### P0 — Table stakes (a modeling tool is not credible without these)
+
+> **Foundational substrate (build first, see §2b):** the **live measurement HUD** — especially a
+> **push/pull distance readout in 3D** (the one you called out: today you drag the cap blind) plus
+> **angle** on the plan segment and **length labels on committed edges** — and the **tool-chrome
+> framework** so the toolbar/status/VCB/overlays are declarative per tool. These two underpin every
+> feature below; ship them before adding tools, not after.
 
 1. **Undo / redo.** Nothing reverses a draw or a push/pull today. This is the single most glaring
    gap and it *gates* everything destructive (vertex delete, clear, opening-cut all assume undo
@@ -128,11 +190,12 @@ lands.
    base: add **midpoint & on-edge** snap to the footprint, **parallel/perpendicular** to existing
    edges, **colored point cues** (endpoint/midpoint/edge), and **arrow-key axis lock** (in addition
    to `Shift`). Modeless and visual — never a settings dialog.
-6. **Live dimension + angle readout while drawing.** Show length **and** angle on the rubber-band
-   segment as you move. Complements the existing typed-length box; makes precision legible.
+6. **Finish the measurement HUD (extends the P0 substrate, §2b.1).** Angle on the plan segment,
+   persistent edge-length labels on the committed footprint, snap/inference badges, and running
+   width×depth. (The bare push/pull distance readout is the P0 slice; this is the rest.)
 7. **Typed dimension everywhere (VCB parity).** Extend the value box to **angle** and to a **rectangle
-   W,D** (see #8), and add a **typed height** for 3D push/pull (a documented 3D-view gap) so height
-   isn't gesture-only.
+   W,D** (see #8), and a **typed height** for 3D push/pull so height isn't gesture-only — all routed
+   through the one tool-declared VCB channel (§2b.2), not per-tool inputs.
 
 ### P2 — Editing (immutable geometry is a dead end)
 
@@ -192,11 +255,13 @@ If any of these is later justified, it needs an ADR — not a toolbar button by 
 
 ## 5. Quick wins vs. big rocks (sequencing note)
 
-- **Quick wins (days, high felt-value):** Zoom-Extents + plan pan/zoom (#2), live dimension/angle
-  readout (#6), typed height in 3D (#7), rejected-geometry status message (#4). These sharpen the
+- **Quick wins (days, high felt-value):** the **push/pull distance readout** (§2b.1 — the gap you
+  flagged, and the highest felt-value single change), Zoom-Extents + plan pan/zoom (#2), plan-segment
+  angle (#6), typed height in 3D (#7), rejected-geometry status message (#4). These sharpen the
   *existing* slice without new architecture.
-- **Foundational (unlock everything after):** Undo/redo (#1) and Selection (#3). Build these before
-  P2 editing — every edit and destructive action depends on them.
+- **Foundational (unlock everything after):** the **tool-chrome framework** (§2b.2), **undo/redo**
+  (#1), and **selection** (#3). Build the chrome framework while only footprint + push/pull exist to
+  migrate; build undo/selection before P2 editing — every edit and destructive action depends on them.
 - **Big rocks (own plan/ADR each):** Wall-type framing (#11), openings (#12), elevation view (#13),
   and — much later — the BREP modeler behind general push/pull (#18).
 
