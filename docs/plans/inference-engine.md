@@ -92,11 +92,14 @@ X-axis line are different mark types, as in SketchUp). Every color is redundant 
    colored markers (shape+color) + the badge; commit via `pick({ exact: true })`. Works for both plan
    draw tools (footprint + rectangle). `inferAlignment`'s from-point guides still render alongside for
    now; they fold into the module in phase 3.
-3. **Linear inference + locks.** On-axis inference (no `Shift` needed), parallel / perpendicular,
-   generalized `Shift`-lock, and arrow-key axis lock; axis / inference lines + the badge. Retires
-   `inferAlignment` into the module.
-4. **Polish + sync.** Hysteresis if the point proves jittery (prefer the currently-held snap within a
-   slightly wider band) and a copy pass on the badges (`copy.md`).
+3. ✅ **Linear inference + locks.** On-axis inference (no `Shift` needed), the generalized `Shift`-lock
+   (dominant axis), and arrow-key axis lock (`→`/`↑`), with red-X / green-Y axis lines + the badge
+   ("On Axis", "On Axis — locked") via `resolveDraw`. **Parallel / perpendicular to arbitrary edges is
+   deferred** (YAGNI: an orthogonal framing tool's edges are axis-aligned, so their parallels already
+   coincide with on-axis). `inferAlignment`'s from-point guides are **kept as the free-cursor fallback**
+   rather than retired — folding them in fully is deferred with parallel/perp.
+4. **Polish + sync (as needed).** Hysteresis if the point proves jittery, a badge copy pass (`copy.md`),
+   and — if ever justified — parallel/perpendicular with arbitrary-angle guide clipping.
 
 ## Smaller engineering calls (mine to make; recorded so they're not re-litigated)
 

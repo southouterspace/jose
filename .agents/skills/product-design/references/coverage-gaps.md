@@ -40,10 +40,11 @@ then move it into a reference/rule/exemplar and delete it here.
 - **Pan/zoom + Zoom-Extents exist** (P0 #2) — scroll zooms to the cursor, middle-drag pans, Fit /
   Shift+Z frames the drawing, all through a stateful `PlanCamera`. **Still uncovered:** touch
   pinch-zoom, and the plan has no explicit zoom-level readout.
-- **Snapping is partial** (P1 #5, ADR 0014) — the cursor now snaps to **endpoint / midpoint / on-edge**
-  of existing geometry with colored cues + badges (`plan-snap.ts`), and there's a 1in grid + from-point
-  alignment guides. **Still uncovered:** on-axis / parallel / perpendicular inference and the Shift/arrow
-  **locks** (phase 3), and a live *angle* guide.
+- **Snapping is mostly there** (P1 #5, ADR 0014) — the cursor snaps to **endpoint / midpoint / on-edge**,
+  infers **on-axis**, and takes **Shift / arrow-key axis locks**, all with colored cues + badges
+  (`plan-snap.ts`), over a 1in grid + from-point alignment fallback. **Still uncovered:** parallel /
+  perpendicular to *arbitrary* (non-axis) edges and intersection snaps — deferred as low-value in an
+  orthogonal framing tool.
 - **Selection exists** (P0 #3) — the select tool picks a vertex/edge/footprint with hover + Esc-clear
   (`plan-selection.ts`, ADR 0013). **Still uncovered:** multi-select, window/crossing box-select, and
   the editing it unlocks — no vertex drag/insert/delete yet.

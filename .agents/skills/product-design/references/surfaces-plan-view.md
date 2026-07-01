@@ -27,11 +27,17 @@ avoid "outline", "polygon", "sketch", "perimeter"._
   **endpoint** (green square), an edge **midpoint** (cyan diamond), or the nearest point **on an edge**
   (red ✕), each named by a **snap badge** ("Endpoint" / "Midpoint" / "On Edge"). The shape + badge carry
   the meaning — never color alone (no token layer yet, `coverage-gaps.md`).
+- The cursor also infers **on-axis** — running the segment within a few degrees of a world axis pins it
+  onto that axis (red **X** line / green **Y** line + "On Axis"). **Locks** turn inference into a
+  constraint: **Shift** locks the dominant axis; the **arrow keys** (`→` = X, `↑` = Y; `←`/`↓` release)
+  lock an axis explicitly, and the badge reads "On Axis — locked". Locks + on-axis are **footprint-only**
+  (a rectangle is already axis-aligned); the arrow lock releases when the draw ends.
 - Snapping is resolved in a pure, **screen-space** module (`plan-snap.ts`), so a snap feels the same at
-  every zoom (like selection). A snapped pick commits **exactly** via `pick({ exact: true })` — it
-  overrides the 1in grid and Shift axis-lock. Point-snap priority: endpoint → midpoint → on-edge.
-- This is the first cut: **on-axis / parallel / perpendicular inference and the Shift/arrow locks are not
-  built yet** (phase 3). The existing from-point row/column alignment guides still render alongside.
+  every zoom (like selection). Priority: **lock → point snap → on-axis → grid**; a resolved snap commits
+  **exactly** via `pick({ exact: true })`, bypassing the runner's own grid/axis handling.
+- **Deferred:** parallel / perpendicular to *arbitrary* edges (low value in an orthogonal framing tool —
+  axis-aligned edges' parallels already coincide with on-axis) and intersection snaps. The existing
+  from-point row/column alignment guides still render as the free-cursor fallback.
 
 ## The rectangle tool (P2 #8)
 

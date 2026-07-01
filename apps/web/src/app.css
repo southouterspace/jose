@@ -225,7 +225,28 @@ body {
   stroke-width: 2;
 }
 
-/* The snap badge naming the active inference (Endpoint / Midpoint / On Edge). */
+/* On-axis guide lines: the world X axis is red, the Y axis green (SketchUp's convention); a hard
+   Shift/arrow lock reads bolder + fully opaque than a soft inference. */
+.plan__axis {
+  pointer-events: none;
+  opacity: 0.8;
+  stroke-width: 1.5;
+}
+
+.plan__axis--x {
+  stroke: #ff6b6b;
+}
+
+.plan__axis--y {
+  stroke: #38d76a;
+}
+
+.plan__axis--locked {
+  opacity: 1;
+  stroke-width: 2.5;
+}
+
+/* The snap badge naming the active inference (Endpoint / Midpoint / On Edge / On Axis). */
 .plan__snapbadge {
   font-size: 10px;
   font-weight: 600;

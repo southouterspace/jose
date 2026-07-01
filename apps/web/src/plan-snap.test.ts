@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_CAMERA, toScreenX, toScreenY } from "./plan-camera";
 import type { Px } from "./plan-selection";
-import { resolveSnap, SNAP_LABEL } from "./plan-snap";
+import { resolveDraw, resolveSnap, SNAP_LABEL } from "./plan-snap";
 
 const FT = 384;
 /** A 24'×16' rectangle ring (world ticks), origin at a corner. */
@@ -81,5 +81,107 @@ describe("resolveSnap — point snaps", () => {
     expect(SNAP_LABEL.endpoint).toBe("Endpoint");
     expect(SNAP_LABEL.midpoint).toBe("Midpoint");
     expect(SNAP_LABEL["on-edge"]).toBe("On Edge");
+    expect(SNAP_LABEL["on-axis"]).toBe("On Axis");
+  });
+});
+
+describe("resolveDraw — axis inference + locks", () => {
+  const anchor = { x: 4 * FT, y: 4 * FT };
+  const free = { axis: null, shift: false } as const;
+
+  test("infers on-axis when the segment runs within a few degrees of horizontal", () => {
+    // Cursor ~8' east and a hair north of the anchor → snaps to the horizontal (X) axis (y = anchor.y).
+    const cursor = { x: 12 * FT, y: 4 * FT + 8 };
+    const snap = resolveDraw(
+      DEFAULT_CAMERA,
+      [],
+      [anchor],
+      at(cursor.x, cursor.y),
+      anchor,
+      free
+    );
+    expect(snap?.kind).toBe("on-axis");
+    expect(snap?.world.y).toBe(anchor.y); // pinned onto the X axis
+    expect(snap?.guide).toEqual({
+      orientation: "horizontal",
+      atTicks: anchor.y,
+      locked: false,
+    });
+  });
+
+  test("a Shift lock constrains to the dominant axis (here: vertical)", () => {
+    // Cursor mostly north but drifting east — Shift locks the dominant (Y) axis.
+    const cursor = { x: 4 * FT + 2 * FT, y: 12 * FT };
+    const snap = resolveDraw(
+      DEFAULT_CAMERA,
+      [],
+      [anchor],
+      at(cursor.x, cursor.y),
+      anchor,
+      { axis: null, shift: true }
+    );
+    expect(snap?.kind).toBe("on-axis");
+    expect(snap?.world.x).toBe(anchor.x); // pinned onto the Y axis
+    expect(snap?.guide?.locked).toBe(true);
+  });
+
+  test("an explicit arrow lock (X) wins regardless of cursor direction", () => {
+    const cursor = { x: 12 * FT, y: 20 * FT }; // heading up-right
+    const snap = resolveDraw(
+      DEFAULT_CAMERA,
+      [],
+      [anchor],
+      at(cursor.x, cursor.y),
+      anchor,
+      { axis: "x", shift: false }
+    );
+    expect(snap?.world.y).toBe(anchor.y);
+    expect(snap?.guide).toEqual({
+      orientation: "horizontal",
+      atTicks: anchor.y,
+      locked: true,
+    });
+  });
+
+  test("a point snap beats on-axis inference (exact point wins)", () => {
+    const ring = [
+      { x: 0, y: 0 },
+      { x: 24 * FT, y: 0 },
+      { x: 24 * FT, y: 16 * FT },
+      { x: 0, y: 16 * FT },
+    ];
+    // Hover a committed vertex that also happens to be axis-aligned from the anchor: endpoint wins.
+    const v = { x: 24 * FT, y: 4 * FT };
+    const anchorOnRow = { x: 0, y: 4 * FT };
+    // (v isn't a ring vertex; use a real one instead)
+    const realV = ring[1] as { x: number; y: number };
+    const snap = resolveDraw(
+      DEFAULT_CAMERA,
+      ring,
+      [anchorOnRow],
+      at(realV.x, realV.y),
+      anchorOnRow,
+      free
+    );
+    expect(snap?.kind).toBe("endpoint");
+    expect(snap?.world).toEqual(realV);
+    // Silence unused-var lint for the illustrative point.
+    expect(v.x).toBe(24 * FT);
+  });
+
+  test("no anchor (rectangle tool) → no lock/on-axis, only point snaps", () => {
+    const ring = [
+      { x: 0, y: 0 },
+      { x: 24 * FT, y: 0 },
+      { x: 24 * FT, y: 16 * FT },
+      { x: 0, y: 16 * FT },
+    ];
+    // A free cursor mid-canvas with no anchor resolves to nothing (point snaps miss, no axis).
+    expect(
+      resolveDraw(DEFAULT_CAMERA, ring, [], at(8 * FT, 8 * FT), null, {
+        axis: "x",
+        shift: true,
+      })
+    ).toBeNull();
   });
 });

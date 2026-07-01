@@ -2,12 +2,11 @@
  * The plan view — the top-down (world XY), orthographic 2D drawing surface (ADR 0005 / CONTEXT.md).
  *
  * While the footprint tool is active, clicks add ring vertices and a click near the first closes the
- * ring, sending a `DrawFootprint` command into the worker. Holding Shift while clicking locks the new
- * edge to the X or Y axis (orthogonal drawing). As the cursor moves it shows a live preview: a
- * rubber-band segment, dashed alignment guides to existing vertices, a live **length + angle** readout
- * (`hud.ts`), and a highlighted close target when a click would close the ring. The value-entry box
- * accepts an exact length (feet/inches), optionally with a `< angle` clause for an absolute bearing
- * (`10' 6" < 45`), to place the next vertex precisely.
+ * ring, sending a `DrawFootprint` command into the worker. As the cursor moves it shows a live preview:
+ * a rubber-band segment, a live **length + angle** readout (`hud.ts`), and — from `plan-snap.ts` — the
+ * inference cues: **point snaps** (endpoint/midpoint/on-edge), **on-axis** inference, and **locks**
+ * (Shift → the dominant axis; `→`/`↑` arrow keys → the X/Y axis). The value-entry box accepts an exact
+ * length (feet/inches), optionally with a `< angle` clause for an absolute bearing (`10' 6" < 45`).
  *
  * When the snapshot returns, this renders the footprint polygon **from the `FootprintMirror`** — the
  * engine's canonical ring — never from the raw clicks — and labels each committed edge with its length
@@ -73,7 +72,15 @@ import {
   type Selection,
   sameSelection,
 } from "./plan-selection";
-import { resolveSnap, SNAP_LABEL, type Snap, type SnapKind } from "./plan-snap";
+import {
+  type AxisGuide,
+  type DrawLock,
+  type LockAxis,
+  resolveDraw,
+  SNAP_LABEL,
+  type Snap,
+  type SnapKind,
+} from "./plan-snap";
 import { type SubmitModifiers, ValueBox } from "./value-box";
 
 /** Grid line spacing in world ticks (384 = 1ft). */
@@ -164,14 +171,16 @@ function resolveTypedRectangle(
   };
 }
 
-/** Resolve a client pointer into the point a draw pick would land on: a snapped point on existing
- *  geometry (committed `exact`) when the cursor is within a snap's screen tolerance, else the raw
- *  world point under the cursor. `null` only when the pointer can't be projected. */
+/** Resolve a client pointer into the point a draw pick would land on: a snapped point (committed
+ *  `exact`) — a point snap, or an axis lock/inference through the `anchor` — when one applies, else the
+ *  raw world point under the cursor. `null` only when the pointer can't be projected. */
 function resolveDrawPoint(
   camera: PlanCamera,
   svg: SVGSVGElement | null,
   ring: readonly Point[],
   pending: readonly Point[],
+  anchor: Point | null,
+  lock: DrawLock,
   clientX: number,
   clientY: number
 ): { target: Point; exact: boolean; snap: Snap | null } | null {
@@ -179,7 +188,7 @@ function resolveDrawPoint(
   if (!vb) {
     return null;
   }
-  const snap = resolveSnap(camera, ring, pending, vb);
+  const snap = resolveDraw(camera, ring, pending, vb, anchor, lock);
   if (snap) {
     return { target: snap.world, exact: true, snap };
   }
@@ -191,8 +200,9 @@ function resolveDrawPoint(
 }
 
 /** The snap marker glyph per kind: an endpoint square, a midpoint diamond, an on-edge ✕ — the shape
- *  (not just the color) carries the kind, so the cue reads without relying on hue. */
-function snapMarker(kind: SnapKind, x: number, y: number): ReactElement {
+ *  (not just the color) carries the kind. `on-axis` has no point marker (its guide line + the cursor
+ *  dot carry it), so it returns `null`. */
+function snapMarker(kind: SnapKind, x: number, y: number): ReactElement | null {
   if (kind === "endpoint") {
     return (
       <rect
@@ -216,26 +226,62 @@ function snapMarker(kind: SnapKind, x: number, y: number): ReactElement {
       />
     );
   }
-  return (
-    <g className="plan__snap plan__snap--edge">
-      <line x1={x - 5} x2={x + 5} y1={y - 5} y2={y + 5} />
-      <line x1={x - 5} x2={x + 5} y1={y + 5} y2={y - 5} />
-    </g>
+  if (kind === "on-edge") {
+    return (
+      <g className="plan__snap plan__snap--edge">
+        <line x1={x - 5} x2={x + 5} y1={y - 5} y2={y + 5} />
+        <line x1={x - 5} x2={x + 5} y1={y + 5} y2={y - 5} />
+      </g>
+    );
+  }
+  return null;
+}
+
+/** The full-extent axis guide line for an `on-axis` snap: red for the X axis (horizontal), green for
+ *  the Y axis (vertical), bold when hard-locked (Shift/arrow). */
+function axisGuideCue(
+  camera: PlanCamera,
+  guide: AxisGuide | undefined
+): ReactElement | null {
+  if (!guide) {
+    return null;
+  }
+  const cls = `plan__axis plan__axis--${guide.orientation === "horizontal" ? "x" : "y"}${guide.locked ? " plan__axis--locked" : ""}`;
+  return guide.orientation === "horizontal" ? (
+    <line
+      className={cls}
+      x1={0}
+      x2={VIEW_W}
+      y1={toScreenY(camera, guide.atTicks)}
+      y2={toScreenY(camera, guide.atTicks)}
+    />
+  ) : (
+    <line
+      className={cls}
+      x1={toScreenX(camera, guide.atTicks)}
+      x2={toScreenX(camera, guide.atTicks)}
+      y1={0}
+      y2={VIEW_H}
+    />
   );
 }
 
-/** The live snap cue: a colored marker at the snapped point plus a badge naming the inference. */
+/** The live snap cue: a colored marker (point kinds) plus a badge naming the inference; a hard lock
+ *  reads "… — locked". */
 function snapCue(camera: PlanCamera, snap: Snap | null): ReactElement | null {
   if (!snap) {
     return null;
   }
   const x = toScreenX(camera, snap.world.x);
   const y = toScreenY(camera, snap.world.y);
+  const label = snap.guide?.locked
+    ? `${SNAP_LABEL[snap.kind]} — locked`
+    : SNAP_LABEL[snap.kind];
   return (
     <g>
       {snapMarker(snap.kind, x, y)}
       <text className="plan__snapbadge" x={x + 11} y={y - 22}>
-        {SNAP_LABEL[snap.kind]}
+        {label}
       </text>
     </g>
   );
@@ -309,6 +355,9 @@ function DrawPreview(props: {
     liveSegment.lengthTicks > 0;
   return (
     <>
+      {/* Axis guide line (on-axis inference / lock), under the geometry preview. */}
+      {axisGuideCue(camera, props.snap?.guide)}
+
       {/* Footprint rubber-band from the last vertex to the cursor. */}
       {props.isFootprint && anchor && (
         <line
@@ -436,6 +485,37 @@ function useZoomExtentsHotkey(fitRef: RefObject<() => void>): void {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [fitRef]);
+}
+
+/** Arrow-key axis lock while the footprint tool is active: → toggles the X (red) axis, ↑ the Y (green)
+ *  axis, ← / ↓ release. Skipped while typing so it never fights the value box. */
+function useAxisLockHotkeys(
+  enabled: boolean,
+  setAxisLock: Dispatch<SetStateAction<LockAxis>>
+): void {
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+    const onKey = (event: KeyboardEvent): void => {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.isContentEditable)) {
+        return;
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        setAxisLock((a) => (a === "x" ? null : "x"));
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setAxisLock((a) => (a === "y" ? null : "y"));
+      } else if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
+        event.preventDefault();
+        setAxisLock(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [enabled, setAxisLock]);
 }
 
 /** An active middle-drag pan, tracked in a ref so pointer-move doesn't re-render per frame. */
@@ -593,8 +673,10 @@ export function PlanView({ store }: PlanViewProps) {
   const [panning, setPanning] = useState(false);
   /** What a click would select right now (select tool only) — ephemeral, view-local hover cue. */
   const [hover, setHover] = useState<Selection | null>(null);
-  /** The live snap the cursor resolved to while drawing (endpoint/midpoint/on-edge), or `null`. */
+  /** The live snap the cursor resolved to while drawing (point / on-axis), or `null`. */
   const [snap, setSnap] = useState<Snap | null>(null);
+  /** The arrow-key axis lock (footprint tool): constrains every pick to the world X or Y axis. */
+  const [axisLock, setAxisLock] = useState<LockAxis>(null);
   /** Active middle-drag pan, tracked in a ref so pointer-move doesn't re-render per frame. */
   const panRef = useRef<PanState | null>(null);
 
@@ -625,6 +707,15 @@ export function PlanView({ store }: PlanViewProps) {
   };
 
   useWheelZoom(svgRef, setCamera);
+  useAxisLockHotkeys(isFootprint, setAxisLock);
+
+  // Release the axis lock whenever there's no in-progress draw (a fresh start owns its own lock).
+  const drawInProgress = store.pendingPicks.length > 0;
+  useEffect(() => {
+    if (!drawInProgress) {
+      setAxisLock(null);
+    }
+  }, [drawInProgress]);
 
   // A ref keeps the latest Zoom-Extents in reach so the hotkey attaches once.
   const fitRef = useRef(fitToContent);
@@ -650,11 +741,20 @@ export function PlanView({ store }: PlanViewProps) {
     if (!isPlanDraw) {
       return;
     }
+    // Axis lock / on-axis inference are footprint gestures (a rectangle is already axis-aligned), so
+    // only the footprint tool passes an anchor + lock; both tools still get point snaps.
+    const drawAnchor = isFootprint ? (store.pendingPicks.at(-1) ?? null) : null;
+    const lock: DrawLock = {
+      axis: axisLock,
+      shift: isFootprint && event.shiftKey,
+    };
     const r = resolveDrawPoint(
       camera,
       svgRef.current,
       ringWorld,
       store.pendingPicks,
+      drawAnchor,
+      lock,
       event.clientX,
       event.clientY
     );
@@ -663,14 +763,8 @@ export function PlanView({ store }: PlanViewProps) {
     }
     setHovering(true);
     setSnap(r.snap);
-    // A snapped point commits exactly (overriding grid + axis lock). Axis lock is a footprint gesture;
-    // a rectangle is already axis-aligned.
-    setDraft(
-      store.draft(r.target, {
-        axisLock: isFootprint && event.shiftKey && !r.exact,
-        exact: r.exact,
-      })
-    );
+    // A resolved snap commits exactly; the runner's own grid/axis handling is bypassed here.
+    setDraft(store.draft(r.target, { exact: r.exact }));
   };
 
   const onPointerLeave = (): void => {
@@ -718,24 +812,28 @@ export function PlanView({ store }: PlanViewProps) {
     if (!isPlanDraw) {
       return;
     }
+    const drawAnchor = isFootprint ? (store.pendingPicks.at(-1) ?? null) : null;
+    const lock: DrawLock = {
+      axis: axisLock,
+      shift: isFootprint && event.shiftKey,
+    };
     const r = resolveDrawPoint(
       camera,
       svgRef.current,
       ringWorld,
       store.pendingPicks,
+      drawAnchor,
+      lock,
       event.clientX,
       event.clientY
     );
     if (!r) {
       return;
     }
-    // Hold Shift to lock a footprint edge to the X or Y axis (a rectangle is already axis-aligned); a
-    // snapped point commits exactly and overrides both.
-    const axisLock = isFootprint && event.shiftKey && !r.exact;
-    store.pick(r.target, { axisLock, exact: r.exact });
+    store.pick(r.target, { exact: r.exact });
     setLengthInput("");
     setSnap(r.snap);
-    setDraft(store.draft(r.target, { axisLock, exact: r.exact }));
+    setDraft(store.draft(r.target, { exact: r.exact }));
   };
 
   /** Grid lines follow the camera; recomputed only when it pans or zooms. */
