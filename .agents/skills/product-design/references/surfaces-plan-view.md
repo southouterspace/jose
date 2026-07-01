@@ -21,6 +21,19 @@ avoid "outline", "polygon", "sketch", "perimeter"._
   engine's canonical ring), as a solid polygon (`plan__footprint`) — never from the raw clicks. This
   is the one-direction rule made visible: dashed = mine-in-progress, solid = the engine's truth.
 
+## The rectangle tool (P2 #8)
+
+- The **rectangle tool** (shortcut `R`) draws a footprint from **two opposite corners**: click the
+  first corner, move (a dashed axis-aligned box rubber-bands from it, `plan__rubber-rect`), click the
+  opposite corner. It emits the *same* closed `DrawFootprint` ring the polyline does — the fast path
+  for the rectangular common case. Winding doesn't matter (the engine validates on unsigned area).
+- Its value box is a **`W,D` size** grammar (`parseSize`): after the first corner, type `24', 16'`
+  (comma / `x` / `×` separated) to place the opposite corner exactly, grown toward the cursor's
+  quadrant (`rectangleCorner`). The running width×depth readout doubles as its live size.
+- Both plan draw tools share the same pick/draft plumbing (`isPlanDraw` in `plan-view.tsx`); only the
+  preview shape and the value grammar differ. A rectangle is already axis-aligned, so Shift-axis-lock
+  is a footprint-only gesture.
+
 ## Coordinates and units
 
 - World is in **ticks**; the plan maps them into a fixed `640×640` viewBox through a **`PlanCamera`**

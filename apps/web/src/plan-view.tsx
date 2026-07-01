@@ -28,8 +28,11 @@ import type { DraftPoint, Point } from "@jose/tool-runner";
 import {
   formatLength,
   parsePolarLength,
+  parseSize,
   pointAtAngle,
   pointAtDistance,
+  rectangleCorner,
+  rectangleRing,
 } from "@jose/tool-runner";
 import {
   type PointerEvent,
@@ -67,7 +70,7 @@ import {
   type Selection,
   sameSelection,
 } from "./plan-selection";
-import { ValueBox } from "./value-box";
+import { type SubmitModifiers, ValueBox } from "./value-box";
 
 /** Grid line spacing in world ticks (384 = 1ft). */
 const GRID_TICKS = 384;
@@ -139,6 +142,37 @@ function resolveTypedVertex(
       ? pointAtDistance(anchor, draft.point, entry.lengthTicks, axisLock)
       : pointAtAngle(anchor, entry.lengthTicks, entry.angleDegrees);
   return { point };
+}
+
+/** Resolve the rectangle value box's typed `W,D` into the opposite corner (grown toward the cursor's
+ *  quadrant), or an `error` string when the entry doesn't name a size. */
+function resolveTypedRectangle(
+  anchor: Point,
+  draft: DraftPoint,
+  input: string
+): { point: Point } | { error: string } {
+  const size = parseSize(input);
+  if (size === null) {
+    return { error: "Enter a size like 24', 16'." };
+  }
+  return {
+    point: rectangleCorner(anchor, draft.point, size.width, size.depth),
+  };
+}
+
+/** The rectangle rubber-band: the axis-aligned box from the first corner (`anchor`) to the cursor. */
+function rectanglePreviewCue(
+  camera: PlanCamera,
+  anchor: Point | null,
+  cursor: Point | null
+): ReactElement | null {
+  if (!(anchor && cursor)) {
+    return null;
+  }
+  const points = rectangleRing(anchor, cursor)
+    .map((c) => `${toScreenX(camera, c.x)},${toScreenY(camera, c.y)}`)
+    .join(" ");
+  return <polygon className="plan__rubber-rect" fill="none" points={points} />;
 }
 
 /** Persistent length labels on a committed footprint — one per edge, centered on the edge midpoint. */
@@ -227,6 +261,65 @@ function surfaceCursor(
   return;
 }
 
+/** The live segment (anchor → cursor) while drawing a footprint: length (ticks) and bearing (degrees). */
+interface LiveSegment {
+  readonly angleDeg: number;
+  readonly lengthTicks: number;
+}
+
+/** The value box's placeholder text for the active grammar: the live W×D for a rectangle, the live
+ *  length+angle for a footprint segment, or a typed-format example before there's a live value. */
+function valuePlaceholder(
+  isRectangle: boolean,
+  extents: { width: number; depth: number } | null,
+  liveSegment: LiveSegment | null
+): string {
+  if (isRectangle) {
+    return extents
+      ? formatExtents(extents.width, extents.depth)
+      : `e.g. 24', 16'`;
+  }
+  return liveSegment && liveSegment.lengthTicks > 0
+    ? segmentReadout(liveSegment.lengthTicks, liveSegment.angleDeg)
+    : `e.g. 10' 6" < 45`;
+}
+
+/** The plan value box (SketchUp's VCB) with grammar-aware chrome: **Size** (`W,D`) for the rectangle
+ *  tool, **Length** (with optional `< angle`) for the footprint tool. Keeps the grammar branching out
+ *  of `PlanView`'s body. */
+function PlanValueBox(props: {
+  readonly disabled: boolean;
+  readonly extents: { width: number; depth: number } | null;
+  readonly isRectangle: boolean;
+  readonly liveSegment: LiveSegment | null;
+  readonly onCancel: () => void;
+  readonly onChange: (value: string) => void;
+  readonly onSubmit: (modifiers: SubmitModifiers) => void;
+  readonly value: string;
+}) {
+  const { isRectangle } = props;
+  return (
+    <ValueBox
+      ariaLabel={
+        isRectangle
+          ? "Rectangle width and depth in feet and inches, e.g. 24', 16'"
+          : 'Segment length in feet and inches — add "< angle" for a bearing'
+      }
+      disabled={props.disabled}
+      label={isRectangle ? "Size" : "Length"}
+      onCancel={props.onCancel}
+      onChange={props.onChange}
+      onSubmit={props.onSubmit}
+      placeholder={valuePlaceholder(
+        isRectangle,
+        props.extents,
+        props.liveSegment
+      )}
+      value={props.value}
+    />
+  );
+}
+
 export interface PlanViewProps {
   readonly store: EngineStore;
 }
@@ -248,7 +341,10 @@ export function PlanView({ store }: PlanViewProps) {
   } | null>(null);
 
   const isFootprint = store.activeTool === "footprint";
+  const isRectangle = store.activeTool === "rectangle";
   const isSelect = store.activeTool === "select";
+  /** Both plan draw tools collect world picks the same way; only the preview + value grammar differ. */
+  const isPlanDraw = isFootprint || isRectangle;
 
   /** Local screen↔world binds over the current camera, so the JSX below reads plainly. */
   const sx = (xTicks: number): number => toScreenX(camera, xTicks);
@@ -334,7 +430,7 @@ export function PlanView({ store }: PlanViewProps) {
       setHover((prev) => (sameSelection(prev, next) ? prev : next));
       return;
     }
-    if (!isFootprint) {
+    if (!isPlanDraw) {
       return;
     }
     const world = worldOf(camera, svgRef.current, event.clientX, event.clientY);
@@ -342,7 +438,8 @@ export function PlanView({ store }: PlanViewProps) {
       return;
     }
     setHovering(true);
-    setDraft(store.draft(world, { axisLock: event.shiftKey }));
+    // Axis lock is a footprint gesture (draw a straight edge); a rectangle is already axis-aligned.
+    setDraft(store.draft(world, { axisLock: isFootprint && event.shiftKey }));
   };
 
   const onPointerLeave = (): void => {
@@ -392,17 +489,18 @@ export function PlanView({ store }: PlanViewProps) {
       );
       return;
     }
-    if (!isFootprint) {
+    if (!isPlanDraw) {
       return;
     }
     const world = worldOf(camera, svgRef.current, event.clientX, event.clientY);
     if (!world) {
       return;
     }
-    // Hold Shift to lock the new edge to the X or Y axis relative to the previous vertex.
-    store.pick(world, { axisLock: event.shiftKey });
+    // Hold Shift to lock a footprint edge to the X or Y axis (a rectangle is already axis-aligned).
+    const axisLock = isFootprint && event.shiftKey;
+    store.pick(world, { axisLock });
     setLengthInput("");
-    setDraft(store.draft(world, { axisLock: event.shiftKey }));
+    setDraft(store.draft(world, { axisLock }));
   };
 
   /** Grid lines follow the camera; recomputed only when it pans or zooms. */
@@ -454,13 +552,15 @@ export function PlanView({ store }: PlanViewProps) {
         }
       : null;
 
-  /** Place the next vertex from the typed value box (length, or `length < angle`); flags an
-   *  unparseable entry rather than swallowing it. */
-  const commitLength = (axisLock: boolean): void => {
+  /** Commit the typed value box for the active grammar — a footprint vertex (length / `length < angle`)
+   *  or a rectangle's opposite corner (`W,D`); flags an unparseable entry rather than swallowing it. */
+  const commitValue = (axisLock: boolean): void => {
     if (!(anchor && draft)) {
       return;
     }
-    const result = resolveTypedVertex(anchor, draft, lengthInput, axisLock);
+    const result = isRectangle
+      ? resolveTypedRectangle(anchor, draft, lengthInput)
+      : resolveTypedVertex(anchor, draft, lengthInput, axisLock);
     if ("error" in result) {
       store.flagRejection(result.error);
       return;
@@ -472,9 +572,9 @@ export function PlanView({ store }: PlanViewProps) {
 
   const footprint = store.footprint;
   const hasRing = footprint !== null && footprint.count >= 3;
-  const showPreview = isFootprint && hovering && draft !== null;
-  // The value box is live only once a segment has somewhere to grow from (≥1 vertex down).
-  const canEnterLength = isFootprint && anchor !== null;
+  const showPreview = isPlanDraw && hovering && draft !== null;
+  // The value box is live only once a draw has an anchor (a first corner / vertex down).
+  const canEnterValue = isPlanDraw && anchor !== null;
 
   const ringVertices = ringOf(footprint);
   const hoverCue = visibleHover(isSelect, hover, store.selection);
@@ -541,8 +641,8 @@ export function PlanView({ store }: PlanViewProps) {
           />
         )}
 
-        {/* Rubber-band segment from the last vertex to the live cursor. */}
-        {showPreview && anchor && (
+        {/* Rubber-band segment from the last vertex to the live cursor (footprint tool). */}
+        {showPreview && isFootprint && anchor && (
           <line
             className="plan__rubber"
             x1={sx(anchor.x)}
@@ -551,6 +651,11 @@ export function PlanView({ store }: PlanViewProps) {
             y2={sy(draft.point.y)}
           />
         )}
+
+        {/* Rectangle rubber-band: the axis-aligned box from the first corner to the cursor. */}
+        {showPreview &&
+          isRectangle &&
+          rectanglePreviewCue(camera, anchor, draft.point)}
 
         {store.pendingPicks.map((p) => (
           <circle
@@ -589,6 +694,7 @@ export function PlanView({ store }: PlanViewProps) {
           />
         )}
         {showPreview &&
+          isFootprint &&
           liveSegment &&
           liveSegment.lengthTicks > 0 &&
           !draft.closing && (
@@ -634,27 +740,20 @@ export function PlanView({ store }: PlanViewProps) {
         </button>
       </div>
 
-      {/* Value-entry box (shared VCB): type an exact length, Enter to place the vertex along the
-          cursor direction; add `< angle` for an absolute bearing (`10' 6" < 45`); Shift+Enter locks a
-          bare length to an axis (ADR 0012 §4). */}
-      <ValueBox
-        ariaLabel={
-          'Segment length in feet and inches — add "< angle" for a bearing'
-        }
-        disabled={!canEnterLength}
-        label="Length"
+      {/* Value-entry box (shared VCB, ADR 0012 §4): grammar-aware — a footprint **Length** (with an
+          optional `< angle` bearing; Shift+Enter axis-locks) or a rectangle **Size** (`W,D`). */}
+      <PlanValueBox
+        disabled={!canEnterValue}
+        extents={extents}
+        isRectangle={isRectangle}
+        liveSegment={liveSegment}
         onCancel={() => {
           setLengthInput("");
           store.cancelDraw();
           setDraft(null);
         }}
         onChange={setLengthInput}
-        onSubmit={({ shiftKey }) => commitLength(shiftKey)}
-        placeholder={
-          liveSegment && liveSegment.lengthTicks > 0
-            ? segmentReadout(liveSegment.lengthTicks, liveSegment.angleDeg)
-            : `e.g. 10' 6" < 45`
-        }
+        onSubmit={({ shiftKey }) => commitValue(shiftKey)}
         value={lengthInput}
       />
     </div>

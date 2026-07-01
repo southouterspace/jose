@@ -152,6 +152,14 @@ body {
   stroke-dasharray: 2 4;
 }
 
+/* Rectangle rubber-band: the axis-aligned box preview from the first corner to the cursor. */
+.plan__rubber-rect {
+  fill: rgb(110 168 254 / 8%);
+  stroke: #6ea8fe;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+}
+
 .plan__cursor {
   fill: none;
   stroke: #cfe0ff;

@@ -5,9 +5,12 @@ import {
   inferAlignment,
   parseLength,
   parsePolarLength,
+  parseSize,
   pointAtAngle,
   pointAtDistance,
   pushPullDistance,
+  rectangleCorner,
+  rectangleRing,
   TOOL_CATALOG,
   ToolRunner,
 } from "./index";
@@ -33,6 +36,49 @@ test("the wall tool emits a DrawWall command on the second pick", () => {
     spacingInches: DEFAULT_SETTINGS.spacingInches,
   });
   expect(runner.pendingPicks).toHaveLength(0);
+});
+
+test("the rectangle tool emits a closed 4-corner DrawFootprint on the second pick", () => {
+  const runner = new ToolRunner(DEFAULT_SETTINGS, "rectangle");
+  expect(runner.activeKey).toBe("rectangle");
+  expect(runner.pick({ x: 0, y: 0 })).toBeNull();
+  const command = runner.pick({ x: 24 * 384, y: 16 * 384 });
+  expect(command).toEqual({
+    kind: "drawFootprint",
+    xs: [0, 24 * 384, 24 * 384, 0],
+    ys: [0, 0, 16 * 384, 16 * 384],
+  });
+  expect(runner.pendingPicks).toHaveLength(0);
+});
+
+test("rectangleRing / rectangleCorner span an axis-aligned box from two corners", () => {
+  expect(rectangleRing({ x: 0, y: 0 }, { x: 10, y: 6 })).toEqual([
+    { x: 0, y: 0 },
+    { x: 10, y: 0 },
+    { x: 10, y: 6 },
+    { x: 0, y: 6 },
+  ]);
+  // A typed size grows toward the cursor's quadrant (here: down-left of the anchor).
+  expect(rectangleCorner({ x: 100, y: 100 }, { x: 40, y: 40 }, 24, 16)).toEqual(
+    {
+      x: 76,
+      y: 84,
+    }
+  );
+  // A zero cursor delta defaults to the +X/+Y quadrant.
+  expect(
+    rectangleCorner({ x: 0, y: 0 }, { x: 0, y: 0 }, 24 * 384, 16 * 384)
+  ).toEqual({ x: 24 * 384, y: 16 * 384 });
+});
+
+test("parseSize reads a W,D pair (comma, x, or ×) into ticks, else null", () => {
+  expect(parseSize("24', 16'")).toEqual({ width: 24 * 384, depth: 16 * 384 });
+  expect(parseSize("24'x16'")).toEqual({ width: 24 * 384, depth: 16 * 384 });
+  expect(parseSize("12 × 8")).toEqual({ width: 12 * 384, depth: 8 * 384 });
+  // Both parts must name a positive length.
+  expect(parseSize("24'")).toBeNull();
+  expect(parseSize("24', abc")).toBeNull();
+  expect(parseSize("")).toBeNull();
 });
 
 test("picks snap to the tick grid", () => {

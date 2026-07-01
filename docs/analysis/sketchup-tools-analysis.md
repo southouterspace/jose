@@ -83,7 +83,7 @@ Grounded in the current code (`packages/tool-runner`, `apps/web/src/plan-view.ts
 | SketchUp pillar | Jose today | Evidence |
 |---|---|---|
 | **1.1 Inference** | **Partial — surprisingly good.** Grid snap, `Shift` axis-lock, alignment-guide inference to existing vertices' rows/cols, ring-close snap all exist in `tool-runner`. Missing: midpoint/edge/intersection snap, parallel/perpendicular, colored point cues, arrow-key axis lock. | `tool-runner/src/index.ts` (`inferAlignment`, axis lock, `gridTicks`) |
-| **1.2 VCB / typed dimension** | **Mostly there.** Plan view has a length box **and** a live **length + angle** readout on the rubber-band segment, persistent **length labels on committed edges**, a running **width×depth**, and typed **polar entry** (`10' 6" < 45`) (P1 #6/#7). 3D push/pull has a live **distance readout** and **typed height**. Missing: typed **rectangle W,D** (waits on the Rectangle tool, P2 #8) and snap/inference **badges**. | `plan-view.tsx` + `hud.ts` (`segmentReadout`, `edgeLabels`, `footprintExtents`); `three-view.tsx` (`pushPullReadout`, `submitHeight`) |
+| **1.2 VCB / typed dimension** | **Mostly there.** Plan view has a length box **and** a live **length + angle** readout on the rubber-band segment, persistent **length labels on committed edges**, a running **width×depth**, and typed **polar entry** (`10' 6" < 45`) and typed **rectangle `W,D`** (P1 #6/#7, P2 #8). 3D push/pull has a live **distance readout** and **typed height**. Missing: snap/inference **badges**. | `plan-view.tsx` + `hud.ts` (`segmentReadout`, `edgeLabels`, `footprintExtents`); `three-view.tsx` (`pushPullReadout`, `submitHeight`) |
 | **1.3 Modifiers / array** | **Missing.** No Move/Copy, no array, no modifier verbs beyond `Shift` axis-lock. | — |
 | **1.4 Push/Pull** | **Built (top-cap only).** Raycast top cap → drag → `PushPull`. Any-face deferred by ADR 0007 §3. | `three-view.tsx`, `command.rs` |
 | **1.5 Faces / topology** | **Built for the one case.** Close ring → footprint face → extrude to mass. General carving needs BREP (deferred). | `session.rs`, ADR 0007 |
@@ -199,16 +199,18 @@ lands.
    plan segment, persistent edge-length labels on the committed footprint, and a running width×depth all
    ship (`hud.ts` pure helpers + `plan-view.tsx`). Remaining: snap/inference **badges** ("Endpoint",
    "On edge", "Parallel") — deferred with the inference-engine work (#5).
-7. **Typed dimension everywhere (VCB parity).** ✅ **Landed except rectangle W,D.** The plan value box
-   takes **polar** entry (`10' 6" < 45` — length + absolute bearing, `parsePolarLength`/`pointAtAngle`)
-   and 3D push/pull takes a **typed height**, both through the one tool-declared VCB channel (§2b.2).
-   **Rectangle W,D** waits on the Rectangle tool (P2 #8).
+7. **Typed dimension everywhere (VCB parity).** ✅ **Landed.** The plan value box takes **polar** entry
+   (`10' 6" < 45` — length + absolute bearing, `parsePolarLength`/`pointAtAngle`), the rectangle tool
+   takes a **`W,D` size** (`parseSize`, P2 #8), and 3D push/pull takes a **typed height** — all through
+   the one tool-declared VCB channel (§2b.2).
 
 ### P2 — Editing (immutable geometry is a dead end)
 
-8. **Rectangle tool.** Most residential footprints are rectangular; a 2-click rectangle with typed
-   `W,D` is dramatically faster than the polyline for the 80% case. A new `ToolDefinition` row +
-   `Command` variant that emits the same closed `DrawFootprint` ring.
+8. ~~**Rectangle tool.**~~ ✅ **Landed.** A 2-click, axis-aligned **rectangle** (shortcut `R`) with a
+   typed **`W,D`** size box (`parseSize`/`rectangleCorner`) — dramatically faster than the polyline for
+   the rectangular 80% case. A `TOOL_CATALOG` row + a chrome row emitting the same closed
+   `DrawFootprint` ring; a dashed box rubber-band previews it. This also delivers the typed-rectangle
+   VCB piece deferred from #7.
 9. **Footprint editing.** Drag a vertex; insert/delete a vertex; move an edge. Requires selection
    (#3) and a new edit `Command` (the engine stores the ring in `Session::footprint` — mutate and
    re-extrude). This is the difference between "sketch once" and "model."
