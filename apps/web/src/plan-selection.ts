@@ -36,27 +36,39 @@ export interface HitTolerance {
 /** Vertex tolerance ≥ edge tolerance so picking a corner wins over the edges meeting at it. */
 export const DEFAULT_TOLERANCE: HitTolerance = { vertex: 9, edge: 6 };
 
-interface Px {
+/** A point in the fixed viewBox pixel space (shared by the plan-view geometry modules). */
+export interface Px {
   readonly px: number;
   readonly py: number;
 }
 
 const distance = (a: Px, b: Px): number => Math.hypot(a.px - b.px, a.py - b.py);
 
-/** Shortest distance from point `p` to segment `a`–`b` (all in screen px). */
-export function distanceToSegment(p: Px, a: Px, b: Px): number {
+/** Where point `p` projects onto segment `a`–`b`, clamped to the segment (all in screen px): the
+ *  clamped parameter `t` (0 at `a`, 1 at `b`) and the projected point. Shared by hit-testing and
+ *  snapping — the latter lerps the *world* endpoints by `t` for an exact on-edge point. */
+export function projectToSegment(
+  p: Px,
+  a: Px,
+  b: Px
+): { px: number; py: number; t: number } {
   const dx = b.px - a.px;
   const dy = b.py - a.py;
   const lenSq = dx * dx + dy * dy;
   if (lenSq === 0) {
-    return distance(p, a); // Degenerate segment: a and b coincide.
+    return { t: 0, px: a.px, py: a.py }; // Degenerate segment: a and b coincide.
   }
-  // Project p onto the line, clamped to the segment.
   const t = Math.max(
     0,
     Math.min(1, ((p.px - a.px) * dx + (p.py - a.py) * dy) / lenSq)
   );
-  return distance(p, { px: a.px + t * dx, py: a.py + t * dy });
+  return { t, px: a.px + t * dx, py: a.py + t * dy };
+}
+
+/** Shortest distance from point `p` to segment `a`–`b` (all in screen px). */
+export function distanceToSegment(p: Px, a: Px, b: Px): number {
+  const proj = projectToSegment(p, a, b);
+  return distance(p, { px: proj.px, py: proj.py });
 }
 
 /** Even-odd ray cast: is screen point `p` inside the polygon `ring` (screen px)? */

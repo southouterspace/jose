@@ -37,9 +37,9 @@ slice's only view; deferred in the drawing UX.
 _Avoid_: section, side view.
 
 **Footprint**:
-The closed 2D profile drawn in plan (a kernel `Path2D`) that bounds a **space**. It is the
-**interior face** of any framing later derived from it — framing offsets outward from it, never
-inward (see _outward framing_).
+The closed 2D profile drawn in plan (a kernel `Path2D`) that bounds a **space** — drawn as a polyline
+(the footprint tool) or as a box (the **rectangle tool**). It is the **interior face** of any framing
+later derived from it — framing offsets outward from it, never inward (see _outward framing_).
 _Avoid_: outline, polygon, sketch, perimeter.
 
 **Vertex** / **Edge**:
@@ -81,10 +81,16 @@ way the client reads geometry; there is no second, client-side model.
 _Avoid_: model, store, cache, snapshot (the snapshot is the *bytes*; the mirror is the *view*).
 
 **Tool**:
-A picking state machine that turns gestures in a viewport into a `Command` (the footprint tool in
-plan; the push/pull tool in 3D) — or, for the **select tool**, into a **selection** rather than a
-command. The **active tool** is the one currently receiving picks.
+A picking state machine that turns gestures in a viewport into a `Command` (the footprint tool and
+the **rectangle tool** in plan; the push/pull tool in 3D) — or, for the **select tool**, into a
+**selection** rather than a command. The **active tool** is the one currently receiving picks.
 _Avoid_: mode, gesture handler.
+
+**Rectangle tool**:
+The plan tool that draws a **footprint** from two opposite corners (a fast, axis-aligned path for the
+rectangular common case) — the same closed ring a polyline footprint produces. Its value box takes a
+**size** (`W,D`, e.g. `24', 16'`).
+_Avoid_: box, rect, room.
 
 **Selection**:
 The user's current pick in the **plan view** — a **footprint**, one of its **vertices**, or one of
@@ -93,3 +99,9 @@ canonical ring, and is cleared whenever the engine recomputes. It *names* geomet
 mutates it (the one-direction rule, [ADR 0013](../../docs/adr/0013-selection-model.md)). The
 precondition for footprint editing, which is deferred.
 _Avoid_: highlight, focus, active element, active object.
+
+**Snap** (inference):
+While drawing, the cursor **snaps** to existing geometry — an **endpoint**, an edge **midpoint**, or a
+point **on an edge** — shown by a colored marker + a badge, so a pick lands exactly. Screen-space,
+presentation-only, resolved in `plan-snap.ts` ([ADR 0014](../../docs/adr/0014-plan-inference-and-snapping-model.md)).
+_Avoid_: magnet, grid-lock, gravity.

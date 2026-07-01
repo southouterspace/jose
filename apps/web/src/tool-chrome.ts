@@ -19,8 +19,9 @@ import type { SelectionKind } from "./plan-selection";
 export type Surface = "3d" | "plan";
 
 /** What a typed value in the measurement box means for a tool (the VCB semantics of ADR 0012 §4).
- *  Declared now; the value box generalizes onto it in a later slice (today it is plan-only "length"). */
-export type ValueGrammar = "height" | "length" | "none";
+ *  `length` = a plan edge (with optional `< angle`), `size` = a rectangle's `W,D`, `height` = a mass
+ *  height. */
+export type ValueGrammar = "height" | "length" | "none" | "size";
 
 /** A minimal projection of the store the chrome reads to resolve enablement and status copy — not
  *  the store itself, so descriptors stay pure and testable. */
@@ -77,6 +78,14 @@ function footprintStatus(state: ChromeState): string {
   return "Ready — Footprint tool active; click to place vertices (hold Shift to lock to an axis)";
 }
 
+/** The rectangle tool's status line — corner-then-corner, with the typed-size hint. */
+function rectangleStatus(state: ChromeState): string {
+  if (state.pendingPicks > 0) {
+    return "Rectangle — click the opposite corner, or type a size like 24', 16', or Esc to cancel";
+  }
+  return "Ready — Rectangle tool active; click the first corner";
+}
+
 /** How each selectable piece reads in the status bar. */
 const SELECTION_NOUN: Record<SelectionKind, string> = {
   footprint: "the footprint",
@@ -113,6 +122,16 @@ export const TOOL_CHROME: readonly ToolChrome[] = [
     runnerBacked: true,
     enabled: () => true,
     status: footprintStatus,
+  },
+  {
+    key: "rectangle",
+    label: "Rectangle",
+    shortcut: "r",
+    surfaces: ["plan"],
+    value: "size",
+    runnerBacked: true,
+    enabled: () => true,
+    status: rectangleStatus,
   },
   {
     key: "pushpull",

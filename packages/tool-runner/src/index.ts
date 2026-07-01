@@ -89,6 +89,14 @@ export interface ToolDefinition {
 export const TOOL_CATALOG: Record<string, ToolDefinition> = {
   wall: { key: "wall", label: "Wall", commit: "count", picks: 2 },
   footprint: { key: "footprint", label: "Footprint", commit: "ring", picks: 0 },
+  // The rectangle: two opposite corners → a closed, axis-aligned 4-vertex footprint. Same
+  // `DrawFootprint` output as the polyline, the fast path for the rectangular 80% case.
+  rectangle: {
+    key: "rectangle",
+    label: "Rectangle",
+    commit: "count",
+    picks: 2,
+  },
 };
 
 /** Runner settings — the modal value grammar (height, OC module) and the snap grid. */
@@ -230,6 +238,92 @@ export function pointAtDistance(
     x: Math.round(from.x + (dx / len) * distanceTicks),
     y: Math.round(from.y + (dy / len) * distanceTicks),
   };
+}
+
+/** The point `lengthTicks` from `from` at an absolute plan bearing of `angleDegrees` — measured
+ *  counter-clockwise from world +X, matching the live angle readout (`hud.ts`). This is the polar
+ *  value-entry endpoint: a typed `10' 6" < 45` places the next vertex by length *and* direction,
+ *  independent of where the cursor points. Rounded to whole ticks. */
+export function pointAtAngle(
+  from: Point,
+  lengthTicks: number,
+  angleDegrees: number
+): Point {
+  const rad = (angleDegrees * Math.PI) / 180;
+  return {
+    x: Math.round(from.x + Math.cos(rad) * lengthTicks),
+    y: Math.round(from.y + Math.sin(rad) * lengthTicks),
+  };
+}
+
+/** Separates the length from the optional bearing in the plan value box's polar grammar (`<` or `∠`). */
+const POLAR_ANGLE_SEP = /[<∠]/;
+
+/** A parsed polar value entry: a length (ticks) and, when the string carried a `< angle` clause, an
+ *  absolute bearing in degrees (else `null`, meaning "use the cursor direction"). */
+export interface PolarEntry {
+  readonly angleDegrees: number | null;
+  readonly lengthTicks: number;
+}
+
+/** Parse the plan value box's polar grammar: a `parseLength` value, optionally followed by `< angle`
+ *  (also `∠`) naming an absolute bearing in degrees, CCW from world +X — e.g. `10' 6" < 45`, `12<90`,
+ *  `8' < -30`. Returns `null` if the length part names no positive length. A missing/blank/unparseable
+ *  angle clause yields `angleDegrees: null` (fall back to the cursor direction), never a rejection —
+ *  the length is the required part, the angle the optional refinement. */
+export function parsePolarLength(input: string): PolarEntry | null {
+  const [lengthPart, anglePart] = input.split(POLAR_ANGLE_SEP, 2);
+  const lengthTicks = parseLength(lengthPart ?? "");
+  if (lengthTicks === null) {
+    return null;
+  }
+  const angle = anglePart?.trim();
+  const angleDegrees =
+    angle && Number.isFinite(Number(angle)) ? Number(angle) : null;
+  return { lengthTicks, angleDegrees };
+}
+
+/** The axis-aligned rectangle ring (4 corners, CCW-or-CW by drag direction) spanned by two opposite
+ *  corners `a` and `b` — the vertices a `rectangle` tool commits as a closed `DrawFootprint`. */
+export function rectangleRing(a: Point, b: Point): Point[] {
+  return [
+    { x: a.x, y: a.y },
+    { x: b.x, y: a.y },
+    { x: b.x, y: b.y },
+    { x: a.x, y: b.y },
+  ];
+}
+
+/** The opposite corner for a typed rectangle: `width`×`depth` from `anchor`, in the quadrant the
+ *  cursor is heading (so a typed size grows the same way the drag was pointing). A zero cursor delta
+ *  defaults to the +X/+Y quadrant. */
+export function rectangleCorner(
+  anchor: Point,
+  cursor: Point,
+  width: number,
+  depth: number
+): Point {
+  const sx = cursor.x < anchor.x ? -1 : 1;
+  const sy = cursor.y < anchor.y ? -1 : 1;
+  return { x: anchor.x + sx * width, y: anchor.y + sy * depth };
+}
+
+/** Separates the two dimensions in the rectangle value box's `W,D` grammar (`,` or `x`/`×`). */
+const SIZE_SEP = /[,x×]/;
+
+/** A rectangle's typed size: width and depth in ticks. */
+export interface Size {
+  readonly depth: number;
+  readonly width: number;
+}
+
+/** Parse the rectangle value box's `W,D` grammar — two `parseLength` values separated by `,` (also
+ *  `x`/`×`), e.g. `24', 16'`, `24'x16'`. Returns `null` unless *both* name a positive length. */
+export function parseSize(input: string): Size | null {
+  const [w, d] = input.split(SIZE_SEP, 2);
+  const width = parseLength(w ?? "");
+  const depth = parseLength(d ?? "");
+  return width !== null && depth !== null ? { width, depth } : null;
 }
 
 /** Snap a point onto alignment with existing vertices: if its X (or Y) is within `toleranceTicks` of
@@ -417,6 +511,19 @@ export class ToolRunner {
 
   private commit(): Command {
     switch (this.active.key) {
+      case "rectangle": {
+        const a = this.picks[0];
+        const b = this.picks[1];
+        if (!(a && b)) {
+          throw new Error("tool-runner: 'rectangle' requires two picks");
+        }
+        const ring = rectangleRing(a, b);
+        return {
+          kind: "drawFootprint",
+          xs: ring.map((p) => p.x),
+          ys: ring.map((p) => p.y),
+        };
+      }
       case "wall": {
         const a = this.picks[0];
         const b = this.picks[1];

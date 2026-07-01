@@ -82,8 +82,8 @@ Grounded in the current code (`packages/tool-runner`, `apps/web/src/plan-view.ts
 
 | SketchUp pillar | Jose today | Evidence |
 |---|---|---|
-| **1.1 Inference** | **Partial — surprisingly good.** Grid snap, `Shift` axis-lock, alignment-guide inference to existing vertices' rows/cols, ring-close snap all exist in `tool-runner`. Missing: midpoint/edge/intersection snap, parallel/perpendicular, colored point cues, arrow-key axis lock. | `tool-runner/src/index.ts` (`inferAlignment`, axis lock, `gridTicks`) |
-| **1.2 VCB / typed dimension** | **Partial.** Plan view has a SketchUp-style length box (`parseLength`, feet/inches) **and** a live length label on the rubber-band segment (`plan__dim`). Missing: typed/live **angle**, persistent **length labels on committed edges**, typed **rectangle W,D**, and any **height readout or typed height** in 3D push/pull (gesture-only, no on-screen distance). | `plan-view.tsx` (`plan__dim`, value box); `three-view.tsx` (no readout at all) |
+| **1.1 Inference** | **Mostly there** (P1 #5). Endpoint / midpoint / on-edge **point snaps**, **on-axis** inference, and **Shift / arrow-key axis locks**, with colored cues + a snap badge (`plan-snap.ts`), over the grid + from-point alignment fallback. Missing (deferred, YAGNI): parallel/perpendicular to arbitrary edges, intersection. | `plan-snap.ts` (`resolveDraw`), `plan-view.tsx`; fallback in `tool-runner` (`inferAlignment`, `gridTicks`) |
+| **1.2 VCB / typed dimension** | **Mostly there.** Plan view has a length box **and** a live **length + angle** readout on the rubber-band segment, persistent **length labels on committed edges**, a running **width×depth**, and typed **polar entry** (`10' 6" < 45`) and typed **rectangle `W,D`** (P1 #6/#7, P2 #8). 3D push/pull has a live **distance readout** and **typed height**. Missing: snap/inference **badges**. | `plan-view.tsx` + `hud.ts` (`segmentReadout`, `edgeLabels`, `footprintExtents`); `three-view.tsx` (`pushPullReadout`, `submitHeight`) |
 | **1.3 Modifiers / array** | **Missing.** No Move/Copy, no array, no modifier verbs beyond `Shift` axis-lock. | — |
 | **1.4 Push/Pull** | **Built (top-cap only).** Raycast top cap → drag → `PushPull`. Any-face deferred by ADR 0007 §3. | `three-view.tsx`, `command.rs` |
 | **1.5 Faces / topology** | **Built for the one case.** Close ring → footprint face → extrude to mass. General carving needs BREP (deferred). | `session.rs`, ADR 0007 |
@@ -109,11 +109,11 @@ The single most important thing a drawing UI does is **tell you what you're abou
 you commit it.** You place a point; you must see not just the line but its **length and angle**;
 you push/pull and you must see the **live distance**. Today this is uneven:
 
-- **Plan view:** the rubber-band segment *does* show a live length (`plan__dim`). But there's **no
-  angle**, **no length on committed footprint edges**, and no running perimeter/area.
-- **3D view:** push/pull has **no distance readout whatsoever** — you drag the cap blind. This is the
-  concrete gap: you should see the height accumulating (e.g. `8' 1"`) pinned to the cursor/cap as you
-  drag, and be able to type it.
+- **Plan view:** ✅ the rubber-band segment shows a live **length + angle** (`plan__dim` via
+  `segmentReadout`), committed edges carry **length labels**, and a running **width×depth** shows (P1
+  #6/#7). Still missing: running perimeter/area and snap/inference badges.
+- **3D view:** ✅ push/pull shows a live **distance readout** pinned to the cursor (`pushPullReadout`)
+  and accepts a **typed height** — the "drag the cap blind" gap is closed.
 
 Treat the HUD as **one shared concern**, not per-tool text nodes:
 - **Ephemeral overlays** anchored to the gesture: length + angle on the active segment; distance on
@@ -191,22 +191,28 @@ lands.
 
 ### P1 — The SketchUp magic (the reason to emulate SketchUp at all)
 
-5. **Inference engine v1.5 — finish the snapping.** Build on the existing `inferAlignment`/axis-lock
-   base: add **midpoint & on-edge** snap to the footprint, **parallel/perpendicular** to existing
-   edges, **colored point cues** (endpoint/midpoint/edge), and **arrow-key axis lock** (in addition
-   to `Shift`). Modeless and visual — never a settings dialog.
-6. **Finish the measurement HUD (extends the P0 substrate, §2b.1).** Angle on the plan segment,
-   persistent edge-length labels on the committed footprint, snap/inference badges, and running
-   width×depth. (The bare push/pull distance readout is the P0 slice; this is the rest.)
-7. **Typed dimension everywhere (VCB parity).** Extend the value box to **angle** and to a **rectangle
-   W,D** (see #8), and a **typed height** for 3D push/pull so height isn't gesture-only — all routed
-   through the one tool-declared VCB channel (§2b.2), not per-tool inputs.
+5. **Inference engine v1.5 — finish the snapping.** ✅ **Landed (phases 1–3).** **Endpoint / midpoint /
+   on-edge** point snaps, **on-axis** inference, and **Shift / arrow-key axis locks**, with colored cues
+   + a snap badge, resolved screen-space in `plan-snap.ts` and committed exactly
+   ([ADR 0014](../adr/0014-plan-inference-and-snapping-model.md), [plan](../plans/inference-engine.md)).
+   **Deferred (YAGNI):** parallel/perpendicular to *arbitrary* edges and intersection snaps — low value
+   in an orthogonal framing tool. Modeless and visual — never a settings dialog.
+6. **Finish the measurement HUD (extends the P0 substrate, §2b.1).** ✅ **Mostly landed.** Angle on the
+   plan segment, persistent edge-length labels on the committed footprint, and a running width×depth all
+   ship (`hud.ts` pure helpers + `plan-view.tsx`). Remaining: snap/inference **badges** ("Endpoint",
+   "On edge", "Parallel") — deferred with the inference-engine work (#5).
+7. **Typed dimension everywhere (VCB parity).** ✅ **Landed.** The plan value box takes **polar** entry
+   (`10' 6" < 45` — length + absolute bearing, `parsePolarLength`/`pointAtAngle`), the rectangle tool
+   takes a **`W,D` size** (`parseSize`, P2 #8), and 3D push/pull takes a **typed height** — all through
+   the one tool-declared VCB channel (§2b.2).
 
 ### P2 — Editing (immutable geometry is a dead end)
 
-8. **Rectangle tool.** Most residential footprints are rectangular; a 2-click rectangle with typed
-   `W,D` is dramatically faster than the polyline for the 80% case. A new `ToolDefinition` row +
-   `Command` variant that emits the same closed `DrawFootprint` ring.
+8. ~~**Rectangle tool.**~~ ✅ **Landed.** A 2-click, axis-aligned **rectangle** (shortcut `R`) with a
+   typed **`W,D`** size box (`parseSize`/`rectangleCorner`) — dramatically faster than the polyline for
+   the rectangular 80% case. A `TOOL_CATALOG` row + a chrome row emitting the same closed
+   `DrawFootprint` ring; a dashed box rubber-band previews it. This also delivers the typed-rectangle
+   VCB piece deferred from #7.
 9. **Footprint editing.** Drag a vertex; insert/delete a vertex; move an edge. Requires selection
    (#3) and a new edit `Command` (the engine stores the ring in `Session::footprint` — mutate and
    re-extrude). This is the difference between "sketch once" and "model."

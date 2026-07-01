@@ -4,8 +4,13 @@ import {
   formatLength,
   inferAlignment,
   parseLength,
+  parsePolarLength,
+  parseSize,
+  pointAtAngle,
   pointAtDistance,
   pushPullDistance,
+  rectangleCorner,
+  rectangleRing,
   TOOL_CATALOG,
   ToolRunner,
 } from "./index";
@@ -31,6 +36,49 @@ test("the wall tool emits a DrawWall command on the second pick", () => {
     spacingInches: DEFAULT_SETTINGS.spacingInches,
   });
   expect(runner.pendingPicks).toHaveLength(0);
+});
+
+test("the rectangle tool emits a closed 4-corner DrawFootprint on the second pick", () => {
+  const runner = new ToolRunner(DEFAULT_SETTINGS, "rectangle");
+  expect(runner.activeKey).toBe("rectangle");
+  expect(runner.pick({ x: 0, y: 0 })).toBeNull();
+  const command = runner.pick({ x: 24 * 384, y: 16 * 384 });
+  expect(command).toEqual({
+    kind: "drawFootprint",
+    xs: [0, 24 * 384, 24 * 384, 0],
+    ys: [0, 0, 16 * 384, 16 * 384],
+  });
+  expect(runner.pendingPicks).toHaveLength(0);
+});
+
+test("rectangleRing / rectangleCorner span an axis-aligned box from two corners", () => {
+  expect(rectangleRing({ x: 0, y: 0 }, { x: 10, y: 6 })).toEqual([
+    { x: 0, y: 0 },
+    { x: 10, y: 0 },
+    { x: 10, y: 6 },
+    { x: 0, y: 6 },
+  ]);
+  // A typed size grows toward the cursor's quadrant (here: down-left of the anchor).
+  expect(rectangleCorner({ x: 100, y: 100 }, { x: 40, y: 40 }, 24, 16)).toEqual(
+    {
+      x: 76,
+      y: 84,
+    }
+  );
+  // A zero cursor delta defaults to the +X/+Y quadrant.
+  expect(
+    rectangleCorner({ x: 0, y: 0 }, { x: 0, y: 0 }, 24 * 384, 16 * 384)
+  ).toEqual({ x: 24 * 384, y: 16 * 384 });
+});
+
+test("parseSize reads a W,D pair (comma, x, or ×) into ticks, else null", () => {
+  expect(parseSize("24', 16'")).toEqual({ width: 24 * 384, depth: 16 * 384 });
+  expect(parseSize("24'x16'")).toEqual({ width: 24 * 384, depth: 16 * 384 });
+  expect(parseSize("12 × 8")).toEqual({ width: 12 * 384, depth: 8 * 384 });
+  // Both parts must name a positive length.
+  expect(parseSize("24'")).toBeNull();
+  expect(parseSize("24', abc")).toBeNull();
+  expect(parseSize("")).toBeNull();
 });
 
 test("picks snap to the tick grid", () => {
@@ -251,6 +299,44 @@ test("pointAtDistance places a point an exact distance along the cursor directio
     x: 389,
     y: 5,
   });
+});
+
+test("pointAtAngle places a point at an absolute bearing (CCW from +X, world Y up)", () => {
+  // Due east: cos0=1, sin0=0.
+  expect(pointAtAngle({ x: 0, y: 0 }, 1920, 0)).toEqual({ x: 1920, y: 0 });
+  // Due north (world Y up): 90° → +Y.
+  expect(pointAtAngle({ x: 0, y: 0 }, 1920, 90)).toEqual({ x: 0, y: 1920 });
+  // A negative bearing drops below the anchor.
+  expect(pointAtAngle({ x: 10, y: 10 }, 384, -90)).toEqual({ x: 10, y: -374 });
+});
+
+test("parsePolarLength reads a length with an optional < angle clause", () => {
+  // Bare length: no angle → cursor direction (null).
+  expect(parsePolarLength("10' 6\"")).toEqual({
+    lengthTicks: 10 * 384 + 6 * 32,
+    angleDegrees: null,
+  });
+  // Length < angle (both `<` and `∠` separate them).
+  expect(parsePolarLength("12<90")).toEqual({
+    lengthTicks: 12 * 384,
+    angleDegrees: 90,
+  });
+  expect(parsePolarLength("8' ∠ -30")).toEqual({
+    lengthTicks: 8 * 384,
+    angleDegrees: -30,
+  });
+  // A blank or unparseable angle clause falls back to the cursor direction, not a rejection.
+  expect(parsePolarLength("8'<")).toEqual({
+    lengthTicks: 8 * 384,
+    angleDegrees: null,
+  });
+  expect(parsePolarLength("8'<abc")).toEqual({
+    lengthTicks: 8 * 384,
+    angleDegrees: null,
+  });
+  // No positive length → null (the length is the required part).
+  expect(parsePolarLength("<45")).toBeNull();
+  expect(parsePolarLength("")).toBeNull();
 });
 
 test("inferAlignment snaps a point onto an existing vertex's row/column within tolerance", () => {
