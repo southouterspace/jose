@@ -159,8 +159,13 @@ export function PlanView({ store }: PlanViewProps) {
 
   /** Place the next vertex at the typed length along the current cursor direction. */
   const commitLength = (axisLock: boolean): void => {
+    if (!(anchor && draft)) {
+      return;
+    }
     const ticks = parseLength(lengthInput);
-    if (ticks === null || !(anchor && draft)) {
+    if (ticks === null) {
+      // Don't silently swallow an unparseable entry — tell the user how to phrase it.
+      store.flagRejection("Enter a length like 10' 6\" or 126in.");
       return;
     }
     const target = pointAtDistance(anchor, draft.point, ticks, axisLock);

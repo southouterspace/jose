@@ -13,7 +13,7 @@
 //! All domain logic lives in [`bim_core`] and the context crates; this crate is a thin marshaling
 //! shell — the only crate in the workspace that contains FFI `unsafe` (via the wasm-bindgen macro).
 
-use bim_core::{Command, DrawFootprint, DrawWall, PushPull, Session};
+use bim_core::{Command, CommandOutcome, DrawFootprint, DrawWall, PushPull, Session};
 use wasm_bindgen::prelude::*;
 
 /// The engine handle exposed to JavaScript. Wraps the canonical [`Session`]; its methods are the
@@ -52,36 +52,68 @@ impl Engine {
         height: i32,
         spacing_inches: f64,
     ) -> u32 {
-        self.session.apply(Command::DrawWall(DrawWall {
+        // DrawWall never rejects; fall back to the live count if that ever changes.
+        match self.session.apply(Command::DrawWall(DrawWall {
             x0,
             y0,
             x1,
             y1,
             height,
             spacing_inches,
-        })) as u32
+        })) {
+            CommandOutcome::Accepted { member_count } => member_count as u32,
+            CommandOutcome::Rejected { .. } => self.session.member_count() as u32,
+        }
     }
 
     /// Channel A: draw (or redraw) the current space's footprint from a closed ring of world-XY
     /// vertices in ticks. `xs` and `ys` are parallel columns (one entry per vertex); the closing
-    /// edge is implicit. Returns the live member count (footprint/volume counts have accessors).
+    /// edge is implicit. Returns the empty string when accepted, or a stable rejection code (see
+    /// [`bim_core::RejectReason::code`]) when the ring is degenerate and canonical state is unchanged.
     #[wasm_bindgen(js_name = drawFootprint)]
-    pub fn draw_footprint(&mut self, xs: &[i32], ys: &[i32]) -> u32 {
+    pub fn draw_footprint(&mut self, xs: &[i32], ys: &[i32]) -> String {
         let vertices = xs.iter().zip(ys.iter()).map(|(&x, &y)| (x, y)).collect();
-        self.session
-            .apply(Command::DrawFootprint(DrawFootprint { vertices })) as u32
+        outcome_code(
+            self.session
+                .apply(Command::DrawFootprint(DrawFootprint { vertices })),
+        )
     }
 
     /// Channel A: push/pull a face of the current volume by a signed tick distance (positive =
     /// extrude, negative = inset). The engine validates `face_index` is the top cap. Returns the
-    /// live member count.
+    /// empty string when accepted, or a stable rejection code when the move is refused.
     #[wasm_bindgen(js_name = pushPull)]
-    pub fn push_pull(&mut self, volume_id: u32, face_index: u32, distance: i32) -> u32 {
-        self.session.apply(Command::PushPull(PushPull {
+    pub fn push_pull(&mut self, volume_id: u32, face_index: u32, distance: i32) -> String {
+        outcome_code(self.session.apply(Command::PushPull(PushPull {
             volume_id,
             face_index,
             distance,
-        })) as u32
+        })))
+    }
+
+    /// Channel A: step back to the previous space state. Returns `true` when the model changed (so
+    /// the caller reships the snapshot), `false` when there was nothing to undo.
+    #[wasm_bindgen(js_name = undo)]
+    pub fn undo(&mut self) -> bool {
+        self.session.undo()
+    }
+
+    /// Channel A: reinstate the most recently undone space state. Returns `true` when it changed.
+    #[wasm_bindgen(js_name = redo)]
+    pub fn redo(&mut self) -> bool {
+        self.session.redo()
+    }
+
+    /// Whether there is a prior state to undo to — for the toolbar's Undo enablement.
+    #[wasm_bindgen(js_name = canUndo)]
+    pub fn can_undo(&self) -> bool {
+        self.session.can_undo()
+    }
+
+    /// Whether there is an undone state to redo — for the toolbar's Redo enablement.
+    #[wasm_bindgen(js_name = canRedo)]
+    pub fn can_redo(&self) -> bool {
+        self.session.can_redo()
     }
 
     /// The live member count.
@@ -137,6 +169,16 @@ impl Engine {
     }
 }
 
+/// Marshal a [`CommandOutcome`] into the boundary's string convention: `""` when accepted, or the
+/// [`RejectReason`](bim_core::RejectReason) code when refused. Keeps the wasm signatures a single
+/// `String` (no boxed result class to `free()` per command).
+fn outcome_code(outcome: CommandOutcome) -> String {
+    match outcome.reason() {
+        Some(reason) => reason.code().to_owned(),
+        None => String::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,5 +200,45 @@ mod tests {
         );
         assert_eq!(engine.element_stride(), 32);
         assert_eq!(engine.layout_hash(), bim_core::layout::LAYOUT_HASH);
+    }
+
+    #[test]
+    fn footprint_and_pushpull_report_rejection_codes() {
+        let ft = 384;
+        let mut engine = Engine::new();
+
+        // A self-crossing ring is refused with its code; state stays empty.
+        let code = engine.draw_footprint(&[0, ft, ft, 0], &[0, ft, 0, ft]);
+        assert_eq!(code, "self_intersecting");
+        assert_eq!(engine.footprint_count(), 0);
+
+        // A valid square is accepted (empty code).
+        let ok = engine.draw_footprint(&[0, ft, ft, 0], &[0, 0, ft, ft]);
+        assert_eq!(ok, "");
+        assert_eq!(engine.footprint_count(), 4);
+
+        // Push/pull the base face is refused; the top face extrudes.
+        assert_eq!(engine.push_pull(1, 0, ft), "not_top_face");
+        assert_eq!(engine.push_pull(1, 1, ft), "");
+        assert_eq!(engine.volume_count(), 1);
+    }
+
+    #[test]
+    fn undo_redo_track_availability() {
+        let ft = 384;
+        let mut engine = Engine::new();
+        assert!(!engine.can_undo() && !engine.can_redo());
+
+        engine.draw_footprint(&[0, ft, ft, 0], &[0, 0, ft, ft]);
+        assert!(engine.can_undo());
+        assert!(engine.undo());
+        assert_eq!(engine.footprint_count(), 0);
+        assert!(engine.can_redo());
+        assert!(engine.redo());
+        assert_eq!(engine.footprint_count(), 4);
+
+        // Nothing left to redo.
+        assert!(!engine.can_redo());
+        assert!(!engine.redo());
     }
 }

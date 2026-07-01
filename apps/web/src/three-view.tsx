@@ -489,10 +489,13 @@ export function ThreeView({ store }: ThreeViewProps) {
   // Height has no axis-lock notion; the submit modifiers are irrelevant here.
   const submitHeight = (): void => {
     const target = parseLength(heightInput);
-    if (target !== null) {
-      // parseLength yields an absolute height; push/pull carries a signed delta from where we are.
-      store.pushPull(currentVolumeId, TOP_FACE, target - currentHeightTicks);
+    if (target === null) {
+      // Surface an unparseable height rather than clearing it with no explanation.
+      store.flagRejection("Enter a height like 8' or 96in.");
+      return;
     }
+    // parseLength yields an absolute height; push/pull carries a signed delta from where we are.
+    store.pushPull(currentVolumeId, TOP_FACE, target - currentHeightTicks);
     setHeightInput("");
   };
 

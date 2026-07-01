@@ -55,3 +55,72 @@ pub struct PushPull {
     /// Signed move distance along the face normal, ticks.
     pub distance: i32,
 }
+
+/// Why the engine refused a command. Each variant is a *user-correctable* condition (a degenerate
+/// footprint, an out-of-model push/pull) — not an internal error. The [`Session`](crate::Session)
+/// leaves canonical state untouched on a rejection, and the boundary surfaces the reason so the UI
+/// can explain it instead of the command silently doing nothing.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RejectReason {
+    /// A footprint ring with fewer than three vertices — not a polygon.
+    TooFewVertices,
+    /// A footprint ring whose vertices enclose no area (collinear or coincident).
+    ZeroArea,
+    /// A footprint ring that crosses or touches itself (a bowtie) — not a simple boundary.
+    SelfIntersecting,
+    /// A push/pull aimed at a face other than the top cap.
+    NotTopFace,
+    /// A push/pull that would drive the mass height to zero or below.
+    NonPositiveHeight,
+    /// A push/pull with nothing to act on (no footprint drawn yet).
+    NoTarget,
+}
+
+impl RejectReason {
+    /// A stable machine code the wasm boundary hands to JS (the UI maps it to human copy). Kept in
+    /// lock-step with the `rejectionMessage` table on the TS side.
+    pub const fn code(self) -> &'static str {
+        match self {
+            RejectReason::TooFewVertices => "too_few_vertices",
+            RejectReason::ZeroArea => "zero_area",
+            RejectReason::SelfIntersecting => "self_intersecting",
+            RejectReason::NotTopFace => "not_top_face",
+            RejectReason::NonPositiveHeight => "non_positive_height",
+            RejectReason::NoTarget => "no_target",
+        }
+    }
+}
+
+/// The result of applying a [`Command`]: either it changed canonical state (carrying the new live
+/// member count) or it was refused with a [`RejectReason`] and state is unchanged.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[must_use]
+pub enum CommandOutcome {
+    /// The command mutated canonical state; `member_count` is the new live member row count.
+    Accepted { member_count: usize },
+    /// The command was refused; canonical state is unchanged.
+    Rejected { reason: RejectReason },
+}
+
+impl CommandOutcome {
+    /// Whether the command changed canonical state.
+    pub const fn is_accepted(self) -> bool {
+        matches!(self, CommandOutcome::Accepted { .. })
+    }
+
+    /// The rejection reason, or `None` when the command was accepted.
+    pub const fn reason(self) -> Option<RejectReason> {
+        match self {
+            CommandOutcome::Rejected { reason } => Some(reason),
+            CommandOutcome::Accepted { .. } => None,
+        }
+    }
+
+    /// The live member count after an accepted command, or `0` for a rejection.
+    pub const fn member_count(self) -> usize {
+        match self {
+            CommandOutcome::Accepted { member_count } => member_count,
+            CommandOutcome::Rejected { .. } => 0,
+        }
+    }
+}

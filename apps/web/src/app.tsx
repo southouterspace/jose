@@ -15,6 +15,27 @@ import { type ChromeState, TOOL_CHROME, toolChrome } from "./tool-chrome";
 /** Tags whose focus should swallow tool shortcuts (typing a length, not switching tools). */
 const TYPING_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
 
+/** Whether focus is in a text field that should keep its own keystrokes. */
+function isTypingTarget(el: HTMLElement | null): boolean {
+  return !!el && (TYPING_TAGS.has(el.tagName) || el.isContentEditable);
+}
+
+/** Resolve an undo/redo keyboard chord (Cmd/Ctrl+Z, Shift for redo; Ctrl+Y on Windows), or `null`
+ *  when the event isn't one. */
+function historyChord(event: KeyboardEvent): "redo" | "undo" | null {
+  if (event.altKey || !(event.metaKey || event.ctrlKey)) {
+    return null;
+  }
+  const key = event.key.toLowerCase();
+  if (key === "y") {
+    return "redo";
+  }
+  if (key === "z") {
+    return event.shiftKey ? "redo" : "undo";
+  }
+  return null;
+}
+
 export function App() {
   const store = useEngineStore();
   const chromeState: ChromeState = {
@@ -28,18 +49,25 @@ export function App() {
   };
 
   // Keep the latest chrome state in a ref so the (once-mounted) key listener reads it without
-  // re-subscribing every render. `activate` is stable (useCallback in the store).
+  // re-subscribing every render. `activate`/`undo`/`redo` are stable (useCallback in the store).
   const stateRef = useRef(chromeState);
   stateRef.current = chromeState;
-  const { activate } = store;
+  const { activate, undo, redo, dismissRejection } = store;
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
-      if (event.metaKey || event.ctrlKey || event.altKey) {
-        return; // Leave browser/OS chords alone.
+      const typing = isTypingTarget(event.target as HTMLElement | null);
+      // Undo/redo chords win first; skipped while typing so they don't fight text-field undo.
+      const chord = historyChord(event);
+      if (chord) {
+        if (!typing) {
+          event.preventDefault();
+          (chord === "redo" ? redo : undo)();
+        }
+        return;
       }
-      const el = event.target as HTMLElement | null;
-      if (el && (TYPING_TAGS.has(el.tagName) || el.isContentEditable)) {
-        return; // Don't hijack keystrokes while typing a value.
+      // Single-key tool shortcuts: no modifiers, and not while typing a value.
+      if (event.metaKey || event.ctrlKey || event.altKey || typing) {
+        return;
       }
       const tool = TOOL_CHROME.find(
         (candidate) => candidate.shortcut === event.key.toLowerCase()
@@ -50,7 +78,19 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [activate]);
+  }, [activate, undo, redo]);
+
+  // Auto-dismiss the rejection toast a few seconds after it appears; re-armed per rejection via the
+  // nonce (an identical repeat still resets the timer). Manual dismiss + successful commands also
+  // clear it (in the store).
+  const rejectionNonce = store.rejection?.nonce;
+  useEffect(() => {
+    if (rejectionNonce === undefined) {
+      return;
+    }
+    const id = setTimeout(dismissRejection, 5000);
+    return () => clearTimeout(id);
+  }, [rejectionNonce, dismissRejection]);
 
   return (
     <div className="app">
@@ -76,6 +116,29 @@ export function App() {
             </button>
           ))}
         </nav>
+
+        <nav aria-label="History" className="toolbar__actions">
+          <button
+            aria-keyshortcuts="Control+Z Meta+Z"
+            className="toolbar__tool"
+            disabled={!store.canUndo}
+            onClick={undo}
+            title="Undo (Ctrl/⌘+Z)"
+            type="button"
+          >
+            Undo
+          </button>
+          <button
+            aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y"
+            className="toolbar__tool"
+            disabled={!store.canRedo}
+            onClick={redo}
+            title="Redo (Ctrl/⌘+Shift+Z)"
+            type="button"
+          >
+            Redo
+          </button>
+        </nav>
       </header>
 
       <main className="viewports">
@@ -86,6 +149,20 @@ export function App() {
           <ThreeView store={store} />
         </section>
       </main>
+
+      {store.rejection && (
+        <div className="toast" role="alert">
+          <span className="toast__message">{store.rejection.message}</span>
+          <button
+            aria-label="Dismiss"
+            className="toast__dismiss"
+            onClick={dismissRejection}
+            type="button"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       <footer aria-live="polite" className="statusbar">
         {store.ready

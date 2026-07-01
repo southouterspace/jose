@@ -20,6 +20,14 @@ import {
 } from "@jose/tool-runner";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { EngineRequest, EngineResponse } from "./protocol";
+import { rejectionMessage } from "./rejection";
+
+/** A user-facing rejection to surface (a refused command, or an invalid typed value). `nonce`
+ *  increments per occurrence so an identical consecutive message still re-triggers the toast. */
+export interface Rejection {
+  readonly message: string;
+  readonly nonce: number;
+}
 
 /** The store surface the app shell and views consume. */
 export interface EngineStore {
@@ -29,9 +37,18 @@ export interface EngineStore {
   readonly activeTool: string;
   /** Abort the in-progress draw, keeping the active tool (Escape / value-entry bail-out). */
   readonly cancelDraw: () => void;
+  /** Whether an undone state is available to reinstate (drives Redo enablement). */
+  readonly canRedo: boolean;
+  /** Whether a prior state is available to return to (drives Undo enablement). */
+  readonly canUndo: boolean;
+  /** Clear the current rejection (dismiss the toast). */
+  readonly dismissRejection: () => void;
   /** Resolve a raw world point into the live preview a click would land on (rubber band, alignment
    *  guides, close target) — read-only; never mutates the in-progress draw. */
   readonly draft: (point: Point, options?: PickOptions) => DraftPoint;
+  /** Surface a client-side rejection (e.g. an unparseable value-box entry) through the same toast
+   *  path as engine rejections. */
+  readonly flagRejection: (message: string) => void;
   /** The latest canonical footprint, as a read-only mirror — `null` until the first draw returns. */
   readonly footprint: FootprintMirror | null;
   /** The mid-draw picks for the active tool (transient UI; never canonical geometry). */
@@ -50,6 +67,12 @@ export interface EngineStore {
   ) => void;
   /** Whether the worker has finished init and passed the layout drift check. */
   readonly ready: boolean;
+  /** Reinstate the most recently undone draw/push (redo). */
+  readonly redo: () => void;
+  /** The latest rejection to surface, or `null` when there is nothing to show. */
+  readonly rejection: Rejection | null;
+  /** Step back to the previous space state (undo). */
+  readonly undo: () => void;
   /** The latest canonical volume (mass), as a read-only mirror — `null` until the first draw. */
   readonly volume: VolumeMirror | null;
 }
@@ -74,6 +97,11 @@ export function useEngineStore(): EngineStore {
   >([]);
   const [footprint, setFootprint] = useState<FootprintMirror | null>(null);
   const [volume, setVolume] = useState<VolumeMirror | null>(null);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const [rejection, setRejection] = useState<Rejection | null>(null);
+  // Monotonic nonce so two identical consecutive rejections still re-trigger the toast + announce.
+  const rejectionNonce = useRef(0);
 
   useEffect(() => {
     const worker = new Worker(new URL("./engine-worker.ts", import.meta.url), {
@@ -96,6 +124,18 @@ export function useEngineStore(): EngineStore {
         setVolume(
           new VolumeMirror(response.volumeBuffer, response.volumeCount)
         );
+        setCanUndo(response.canUndo);
+        setCanRedo(response.canRedo);
+        // A successful command clears any lingering rejection — the error is resolved.
+        setRejection(null);
+        return;
+      }
+      if (response.kind === "rejected") {
+        rejectionNonce.current += 1;
+        setRejection({
+          message: rejectionMessage(response.reason),
+          nonce: rejectionNonce.current,
+        });
       }
     };
 
@@ -183,16 +223,46 @@ export function useEngineStore(): EngineStore {
     setPendingPicks([]);
   }, [runner]);
 
+  const undo = useCallback((): void => {
+    const worker = workerRef.current;
+    if (worker) {
+      send(worker, { kind: "undo" });
+    }
+  }, []);
+
+  const redo = useCallback((): void => {
+    const worker = workerRef.current;
+    if (worker) {
+      send(worker, { kind: "redo" });
+    }
+  }, []);
+
+  const dismissRejection = useCallback((): void => {
+    setRejection(null);
+  }, []);
+
+  const flagRejection = useCallback((message: string): void => {
+    rejectionNonce.current += 1;
+    setRejection({ message, nonce: rejectionNonce.current });
+  }, []);
+
   return {
     activeTool,
     activate,
+    canRedo,
+    canUndo,
     cancelDraw,
+    dismissRejection,
     draft,
+    flagRejection,
+    footprint,
+    pendingPicks,
     pick,
     pushPull,
-    pendingPicks,
-    footprint,
-    volume,
     ready,
+    redo,
+    rejection,
+    undo,
+    volume,
   };
 }
