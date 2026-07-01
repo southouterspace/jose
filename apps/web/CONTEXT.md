@@ -99,3 +99,9 @@ canonical ring, and is cleared whenever the engine recomputes. It *names* geomet
 mutates it (the one-direction rule, [ADR 0013](../../docs/adr/0013-selection-model.md)). The
 precondition for footprint editing, which is deferred.
 _Avoid_: highlight, focus, active element, active object.
+
+**Snap** (inference):
+While drawing, the cursor **snaps** to existing geometry — an **endpoint**, an edge **midpoint**, or a
+point **on an edge** — shown by a colored marker + a badge, so a pick lands exactly. Screen-space,
+presentation-only, resolved in `plan-snap.ts` ([ADR 0014](../../docs/adr/0014-plan-inference-and-snapping-model.md)).
+_Avoid_: magnet, grid-lock, gravity.

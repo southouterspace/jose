@@ -191,10 +191,11 @@ lands.
 
 ### P1 — The SketchUp magic (the reason to emulate SketchUp at all)
 
-5. **Inference engine v1.5 — finish the snapping.** Build on the existing `inferAlignment`/axis-lock
-   base: add **midpoint & on-edge** snap to the footprint, **parallel/perpendicular** to existing
-   edges, **colored point cues** (endpoint/midpoint/edge), and **arrow-key axis lock** (in addition
-   to `Shift`). Modeless and visual — never a settings dialog.
+5. **Inference engine v1.5 — finish the snapping.** ⏳ **Point snaps landed (phases 1–2).**
+   **Endpoint / midpoint / on-edge** snapping with **colored point cues** + a snap badge, resolved
+   screen-space in `plan-snap.ts` and committed exactly ([ADR 0014](../adr/0014-plan-inference-and-snapping-model.md),
+   [plan](../plans/inference-engine.md)). **Remaining:** on-axis / **parallel/perpendicular** inference
+   and the **Shift/arrow-key locks** (phase 3). Modeless and visual — never a settings dialog.
 6. **Finish the measurement HUD (extends the P0 substrate, §2b.1).** ✅ **Mostly landed.** Angle on the
    plan segment, persistent edge-length labels on the committed footprint, and a running width×depth all
    ship (`hud.ts` pure helpers + `plan-view.tsx`). Remaining: snap/inference **badges** ("Endpoint",

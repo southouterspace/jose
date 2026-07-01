@@ -21,6 +21,18 @@ avoid "outline", "polygon", "sketch", "perimeter"._
   engine's canonical ring), as a solid polygon (`plan__footprint`) — never from the raw clicks. This
   is the one-direction rule made visible: dashed = mine-in-progress, solid = the engine's truth.
 
+## Snapping / inference (P1 #5, ADR 0014)
+
+- While drawing (footprint or rectangle), the cursor **snaps** to existing geometry: a footprint/pending
+  **endpoint** (green square), an edge **midpoint** (cyan diamond), or the nearest point **on an edge**
+  (red ✕), each named by a **snap badge** ("Endpoint" / "Midpoint" / "On Edge"). The shape + badge carry
+  the meaning — never color alone (no token layer yet, `coverage-gaps.md`).
+- Snapping is resolved in a pure, **screen-space** module (`plan-snap.ts`), so a snap feels the same at
+  every zoom (like selection). A snapped pick commits **exactly** via `pick({ exact: true })` — it
+  overrides the 1in grid and Shift axis-lock. Point-snap priority: endpoint → midpoint → on-edge.
+- This is the first cut: **on-axis / parallel / perpendicular inference and the Shift/arrow locks are not
+  built yet** (phase 3). The existing from-point row/column alignment guides still render alongside.
+
 ## The rectangle tool (P2 #8)
 
 - The **rectangle tool** (shortcut `R`) draws a footprint from **two opposite corners**: click the

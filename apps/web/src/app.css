@@ -204,6 +204,38 @@ body {
   paint-order: stroke;
 }
 
+/* Inference snap markers (P1 #5): the shape carries the kind, the color reinforces it, and the badge
+   names it — so the cue never depends on hue alone. */
+.plan__snap {
+  pointer-events: none;
+  fill: none;
+  stroke-width: 2;
+}
+
+.plan__snap--endpoint {
+  stroke: #38d76a; /* green — a footprint/pending vertex */
+}
+
+.plan__snap--midpoint {
+  stroke: #35d0d6; /* cyan — an edge midpoint */
+}
+
+.plan__snap--edge line {
+  stroke: #ff6b6b; /* red — the nearest point on an edge */
+  stroke-width: 2;
+}
+
+/* The snap badge naming the active inference (Endpoint / Midpoint / On Edge). */
+.plan__snapbadge {
+  font-size: 10px;
+  font-weight: 600;
+  pointer-events: none;
+  fill: #e8e8ea;
+  stroke: #1b1b1f;
+  stroke-width: 3px;
+  paint-order: stroke;
+}
+
 /* Close target: a halo + label on the first vertex when a click would close the ring. */
 .plan__close circle {
   fill: rgb(122 222 160 / 22%);

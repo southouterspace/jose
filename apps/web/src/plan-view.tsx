@@ -24,7 +24,7 @@
  */
 
 import type { FootprintMirror } from "@jose/render-mirror";
-import type { DraftPoint, Point } from "@jose/tool-runner";
+import type { AlignmentGuide, DraftPoint, Point } from "@jose/tool-runner";
 import {
   formatLength,
   parsePolarLength,
@@ -35,8 +35,11 @@ import {
   rectangleRing,
 } from "@jose/tool-runner";
 import {
+  type Dispatch,
   type PointerEvent,
   type ReactElement,
+  type RefObject,
+  type SetStateAction,
   useEffect,
   useMemo,
   useRef,
@@ -70,6 +73,7 @@ import {
   type Selection,
   sameSelection,
 } from "./plan-selection";
+import { resolveSnap, SNAP_LABEL, type Snap, type SnapKind } from "./plan-snap";
 import { type SubmitModifiers, ValueBox } from "./value-box";
 
 /** Grid line spacing in world ticks (384 = 1ft). */
@@ -160,6 +164,112 @@ function resolveTypedRectangle(
   };
 }
 
+/** Resolve a client pointer into the point a draw pick would land on: a snapped point on existing
+ *  geometry (committed `exact`) when the cursor is within a snap's screen tolerance, else the raw
+ *  world point under the cursor. `null` only when the pointer can't be projected. */
+function resolveDrawPoint(
+  camera: PlanCamera,
+  svg: SVGSVGElement | null,
+  ring: readonly Point[],
+  pending: readonly Point[],
+  clientX: number,
+  clientY: number
+): { target: Point; exact: boolean; snap: Snap | null } | null {
+  const vb = viewBoxOf(svg, clientX, clientY);
+  if (!vb) {
+    return null;
+  }
+  const snap = resolveSnap(camera, ring, pending, vb);
+  if (snap) {
+    return { target: snap.world, exact: true, snap };
+  }
+  return {
+    target: { x: toWorldX(camera, vb.px), y: toWorldY(camera, vb.py) },
+    exact: false,
+    snap: null,
+  };
+}
+
+/** The snap marker glyph per kind: an endpoint square, a midpoint diamond, an on-edge ✕ — the shape
+ *  (not just the color) carries the kind, so the cue reads without relying on hue. */
+function snapMarker(kind: SnapKind, x: number, y: number): ReactElement {
+  if (kind === "endpoint") {
+    return (
+      <rect
+        className="plan__snap plan__snap--endpoint"
+        height={10}
+        width={10}
+        x={x - 5}
+        y={y - 5}
+      />
+    );
+  }
+  if (kind === "midpoint") {
+    return (
+      <rect
+        className="plan__snap plan__snap--midpoint"
+        height={10}
+        transform={`rotate(45 ${x} ${y})`}
+        width={10}
+        x={x - 5}
+        y={y - 5}
+      />
+    );
+  }
+  return (
+    <g className="plan__snap plan__snap--edge">
+      <line x1={x - 5} x2={x + 5} y1={y - 5} y2={y + 5} />
+      <line x1={x - 5} x2={x + 5} y1={y + 5} y2={y - 5} />
+    </g>
+  );
+}
+
+/** The live snap cue: a colored marker at the snapped point plus a badge naming the inference. */
+function snapCue(camera: PlanCamera, snap: Snap | null): ReactElement | null {
+  if (!snap) {
+    return null;
+  }
+  const x = toScreenX(camera, snap.world.x);
+  const y = toScreenY(camera, snap.world.y);
+  return (
+    <g>
+      {snapMarker(snap.kind, x, y)}
+      <text className="plan__snapbadge" x={x + 11} y={y - 22}>
+        {SNAP_LABEL[snap.kind]}
+      </text>
+    </g>
+  );
+}
+
+/** The dashed alignment guides in play: a full-height/width line at each row/column the cursor shares
+ *  with an existing vertex (the from-point inference). */
+function guideCues(
+  camera: PlanCamera,
+  guides: readonly AlignmentGuide[]
+): ReactElement[] {
+  return guides.map((g) =>
+    g.orientation === "vertical" ? (
+      <line
+        className="plan__guide"
+        key={`gv${g.sourceIndex}`}
+        x1={toScreenX(camera, g.atTicks)}
+        x2={toScreenX(camera, g.atTicks)}
+        y1={0}
+        y2={VIEW_H}
+      />
+    ) : (
+      <line
+        className="plan__guide"
+        key={`gh${g.sourceIndex}`}
+        x1={0}
+        x2={VIEW_W}
+        y1={toScreenY(camera, g.atTicks)}
+        y2={toScreenY(camera, g.atTicks)}
+      />
+    )
+  );
+}
+
 /** The rectangle rubber-band: the axis-aligned box from the first corner (`anchor`) to the cursor. */
 function rectanglePreviewCue(
   camera: PlanCamera,
@@ -173,6 +283,79 @@ function rectanglePreviewCue(
     .map((c) => `${toScreenX(camera, c.x)},${toScreenY(camera, c.y)}`)
     .join(" ");
   return <polygon className="plan__rubber-rect" fill="none" points={points} />;
+}
+
+/** The transient draw preview under the cursor (rendered only while a plan draw is hovering): the
+ *  active tool's rubber-band (footprint segment or rectangle box), the ring-close target, the cursor
+ *  dot, the length+angle readout, and the live snap cue. Kept a component so its per-element
+ *  conditionals live here, not in `PlanView`'s body. */
+function DrawPreview(props: {
+  readonly anchor: Point | null;
+  readonly camera: PlanCamera;
+  readonly draft: DraftPoint;
+  readonly firstPick: Point | null;
+  readonly isFootprint: boolean;
+  readonly isRectangle: boolean;
+  readonly liveSegment: LiveSegment | null;
+  readonly snap: Snap | null;
+}) {
+  const { anchor, camera, draft, firstPick, liveSegment } = props;
+  const sx = (t: number): number => toScreenX(camera, t);
+  const sy = (t: number): number => toScreenY(camera, t);
+  const showDim =
+    props.isFootprint &&
+    !draft.closing &&
+    liveSegment !== null &&
+    liveSegment.lengthTicks > 0;
+  return (
+    <>
+      {/* Footprint rubber-band from the last vertex to the cursor. */}
+      {props.isFootprint && anchor && (
+        <line
+          className="plan__rubber"
+          x1={sx(anchor.x)}
+          x2={sx(draft.point.x)}
+          y1={sy(anchor.y)}
+          y2={sy(draft.point.y)}
+        />
+      )}
+
+      {/* Rectangle rubber-band: the axis-aligned box from the first corner to the cursor. */}
+      {props.isRectangle && rectanglePreviewCue(camera, anchor, draft.point)}
+
+      {/* Close target: a click here closes the ring. */}
+      {draft.closing && firstPick && (
+        <g className="plan__close">
+          <circle cx={sx(firstPick.x)} cy={sy(firstPick.y)} r={9} />
+          <text x={sx(firstPick.x) + 13} y={sy(firstPick.y) - 9}>
+            Close
+          </text>
+        </g>
+      )}
+
+      {/* Live cursor dot + the length+angle readout trailing it (footprint tool). */}
+      {!draft.closing && (
+        <circle
+          className="plan__cursor"
+          cx={sx(draft.point.x)}
+          cy={sy(draft.point.y)}
+          r={3.5}
+        />
+      )}
+      {showDim && liveSegment && (
+        <text
+          className="plan__dim"
+          x={sx(draft.point.x) + 10}
+          y={sy(draft.point.y) - 10}
+        >
+          {segmentReadout(liveSegment.lengthTicks, liveSegment.angleDeg)}
+        </text>
+      )}
+
+      {/* Live snap cue (endpoint / midpoint / on-edge): a colored marker + badge at the snap. */}
+      {snapCue(camera, props.snap)}
+    </>
+  );
 }
 
 /** Persistent length labels on a committed footprint — one per edge, centered on the edge midpoint. */
@@ -208,15 +391,92 @@ function viewBoxOf(
   };
 }
 
-/** The world point (ticks) under a client pointer position, via the current camera. */
-function worldOf(
-  camera: PlanCamera,
+/** Scroll-to-zoom toward the cursor. A native, non-passive `wheel` listener is required to
+ *  `preventDefault` the page scroll (React's synthetic wheel handler is passive); `setCamera`'s
+ *  functional form reads the latest camera, so this attaches once. */
+function useWheelZoom(
+  svgRef: RefObject<SVGSVGElement | null>,
+  setCamera: Dispatch<SetStateAction<PlanCamera>>
+): void {
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) {
+      return;
+    }
+    const onWheel = (event: WheelEvent): void => {
+      event.preventDefault();
+      const rect = svg.getBoundingClientRect();
+      const px = ((event.clientX - rect.left) / rect.width) * VIEW_W;
+      const py = ((event.clientY - rect.top) / rect.height) * VIEW_H;
+      const factor = event.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+      setCamera((cam) => zoomAt(cam, px, py, factor));
+    };
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+  }, [svgRef, setCamera]);
+}
+
+/** `Shift+Z` runs Zoom-Extents (SketchUp's), reading the latest fit via a ref so it attaches once;
+ *  skipped while typing so it never hijacks the value box. */
+function useZoomExtentsHotkey(fitRef: RefObject<() => void>): void {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.ctrlKey || event.metaKey || event.altKey) {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.isContentEditable)) {
+        return;
+      }
+      if (event.shiftKey && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        fitRef.current?.();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [fitRef]);
+}
+
+/** An active middle-drag pan, tracked in a ref so pointer-move doesn't re-render per frame. */
+interface PanState {
+  lastPx: number;
+  lastPy: number;
+  pointerId: number;
+}
+
+/** Continue an active middle-drag pan on a pointer-move; returns whether the pan consumed the event
+ *  (so the caller skips tool handling). */
+function continuePan(
+  pan: PanState | null,
   svg: SVGSVGElement | null,
-  clientX: number,
-  clientY: number
-): { x: number; y: number } | null {
-  const vb = viewBoxOf(svg, clientX, clientY);
-  return vb ? { x: toWorldX(camera, vb.px), y: toWorldY(camera, vb.py) } : null;
+  event: PointerEvent<SVGSVGElement>,
+  setCamera: Dispatch<SetStateAction<PlanCamera>>
+): boolean {
+  if (!(pan && event.pointerId === pan.pointerId)) {
+    return false;
+  }
+  const vb = viewBoxOf(svg, event.clientX, event.clientY);
+  if (vb) {
+    setCamera((cam) => panBy(cam, vb.px - pan.lastPx, vb.py - pan.lastPy));
+    pan.lastPx = vb.px;
+    pan.lastPy = vb.py;
+  }
+  return true;
+}
+
+/** Start a middle-drag pan on a pointer-down: capture the pointer and return the new pan state, or
+ *  `null` when the pointer can't be projected. */
+function startPan(
+  svg: SVGSVGElement | null,
+  event: PointerEvent<SVGSVGElement>
+): PanState | null {
+  const vb = viewBoxOf(svg, event.clientX, event.clientY);
+  if (!vb) {
+    return null;
+  }
+  svg?.setPointerCapture(event.pointerId);
+  return { pointerId: event.pointerId, lastPx: vb.px, lastPy: vb.py };
 }
 
 /** The ring piece a client pointer position would select (select tool), or `null`. */
@@ -333,18 +593,18 @@ export function PlanView({ store }: PlanViewProps) {
   const [panning, setPanning] = useState(false);
   /** What a click would select right now (select tool only) — ephemeral, view-local hover cue. */
   const [hover, setHover] = useState<Selection | null>(null);
+  /** The live snap the cursor resolved to while drawing (endpoint/midpoint/on-edge), or `null`. */
+  const [snap, setSnap] = useState<Snap | null>(null);
   /** Active middle-drag pan, tracked in a ref so pointer-move doesn't re-render per frame. */
-  const panRef = useRef<{
-    pointerId: number;
-    lastPx: number;
-    lastPy: number;
-  } | null>(null);
+  const panRef = useRef<PanState | null>(null);
 
   const isFootprint = store.activeTool === "footprint";
   const isRectangle = store.activeTool === "rectangle";
   const isSelect = store.activeTool === "select";
   /** Both plan draw tools collect world picks the same way; only the preview + value grammar differ. */
   const isPlanDraw = isFootprint || isRectangle;
+  /** Committed ring vertices (world ticks) the snap engine tests against; empty until the first close. */
+  const ringWorld: readonly Point[] = store.footprint?.vertices() ?? [];
 
   /** Local screen↔world binds over the current camera, so the JSX below reads plainly. */
   const sx = (xTicks: number): number => toScreenX(camera, xTicks);
@@ -364,58 +624,15 @@ export function PlanView({ store }: PlanViewProps) {
     setCamera(fitToBounds(boundsOf(points)));
   };
 
-  // Scroll to zoom toward the cursor. A native, non-passive listener is required to preventDefault
-  // the page scroll; React's synthetic wheel handler is passive and can't. `setCamera`'s functional
-  // form reads the latest camera, so this attaches once.
-  useEffect(() => {
-    const svg = svgRef.current;
-    if (!svg) {
-      return;
-    }
-    const onWheel = (event: WheelEvent): void => {
-      event.preventDefault();
-      const rect = svg.getBoundingClientRect();
-      const px = ((event.clientX - rect.left) / rect.width) * VIEW_W;
-      const py = ((event.clientY - rect.top) / rect.height) * VIEW_H;
-      const factor = event.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
-      setCamera((cam) => zoomAt(cam, px, py, factor));
-    };
-    svg.addEventListener("wheel", onWheel, { passive: false });
-    return () => svg.removeEventListener("wheel", onWheel);
-  }, []);
+  useWheelZoom(svgRef, setCamera);
 
-  // Shift+Z zooms to fit (SketchUp's Zoom-Extents). A ref keeps the latest content in reach without
-  // re-subscribing; skipped while typing so it doesn't hijack the value box.
+  // A ref keeps the latest Zoom-Extents in reach so the hotkey attaches once.
   const fitRef = useRef(fitToContent);
   fitRef.current = fitToContent;
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.ctrlKey || event.metaKey || event.altKey) {
-        return;
-      }
-      const target = event.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.isContentEditable)) {
-        return;
-      }
-      if (event.shiftKey && event.key.toLowerCase() === "z") {
-        event.preventDefault();
-        fitRef.current();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  useZoomExtentsHotkey(fitRef);
 
   const onPointerMove = (event: PointerEvent<SVGSVGElement>): void => {
-    const pan = panRef.current;
-    if (pan && event.pointerId === pan.pointerId) {
-      const vb = viewBoxOf(svgRef.current, event.clientX, event.clientY);
-      if (!vb) {
-        return;
-      }
-      setCamera((cam) => panBy(cam, vb.px - pan.lastPx, vb.py - pan.lastPy));
-      pan.lastPx = vb.px;
-      pan.lastPy = vb.py;
+    if (continuePan(panRef.current, svgRef.current, event, setCamera)) {
       return;
     }
     // Select mode: hover-highlight whatever a click would pick (vertex/edge/footprint).
@@ -433,18 +650,33 @@ export function PlanView({ store }: PlanViewProps) {
     if (!isPlanDraw) {
       return;
     }
-    const world = worldOf(camera, svgRef.current, event.clientX, event.clientY);
-    if (!world) {
+    const r = resolveDrawPoint(
+      camera,
+      svgRef.current,
+      ringWorld,
+      store.pendingPicks,
+      event.clientX,
+      event.clientY
+    );
+    if (!r) {
       return;
     }
     setHovering(true);
-    // Axis lock is a footprint gesture (draw a straight edge); a rectangle is already axis-aligned.
-    setDraft(store.draft(world, { axisLock: isFootprint && event.shiftKey }));
+    setSnap(r.snap);
+    // A snapped point commits exactly (overriding grid + axis lock). Axis lock is a footprint gesture;
+    // a rectangle is already axis-aligned.
+    setDraft(
+      store.draft(r.target, {
+        axisLock: isFootprint && event.shiftKey && !r.exact,
+        exact: r.exact,
+      })
+    );
   };
 
   const onPointerLeave = (): void => {
     setHovering(false);
     setHover(null);
+    setSnap(null);
   };
 
   const endPan = (event: PointerEvent<SVGSVGElement>): void => {
@@ -460,17 +692,11 @@ export function PlanView({ store }: PlanViewProps) {
     // Middle-button drag pans, in any tool (SketchUp parity) — it never places geometry.
     if (event.button === 1) {
       event.preventDefault();
-      const vb = viewBoxOf(svgRef.current, event.clientX, event.clientY);
-      if (!vb) {
-        return;
+      const pan = startPan(svgRef.current, event);
+      if (pan) {
+        panRef.current = pan;
+        setPanning(true);
       }
-      panRef.current = {
-        pointerId: event.pointerId,
-        lastPx: vb.px,
-        lastPy: vb.py,
-      };
-      svgRef.current?.setPointerCapture(event.pointerId);
-      setPanning(true);
       return;
     }
     if (event.button !== 0) {
@@ -492,15 +718,24 @@ export function PlanView({ store }: PlanViewProps) {
     if (!isPlanDraw) {
       return;
     }
-    const world = worldOf(camera, svgRef.current, event.clientX, event.clientY);
-    if (!world) {
+    const r = resolveDrawPoint(
+      camera,
+      svgRef.current,
+      ringWorld,
+      store.pendingPicks,
+      event.clientX,
+      event.clientY
+    );
+    if (!r) {
       return;
     }
-    // Hold Shift to lock a footprint edge to the X or Y axis (a rectangle is already axis-aligned).
-    const axisLock = isFootprint && event.shiftKey;
-    store.pick(world, { axisLock });
+    // Hold Shift to lock a footprint edge to the X or Y axis (a rectangle is already axis-aligned); a
+    // snapped point commits exactly and overrides both.
+    const axisLock = isFootprint && event.shiftKey && !r.exact;
+    store.pick(r.target, { axisLock, exact: r.exact });
     setLengthInput("");
-    setDraft(store.draft(world, { axisLock }));
+    setSnap(r.snap);
+    setDraft(store.draft(r.target, { axisLock, exact: r.exact }));
   };
 
   /** Grid lines follow the camera; recomputed only when it pans or zooms. */
@@ -607,28 +842,7 @@ export function PlanView({ store }: PlanViewProps) {
         </g>
 
         {/* Dashed alignment guides: the cursor shares an existing vertex's row/column. */}
-        {showPreview &&
-          draft.guides.map((g) =>
-            g.orientation === "vertical" ? (
-              <line
-                className="plan__guide"
-                key={`gv${g.sourceIndex}`}
-                x1={sx(g.atTicks)}
-                x2={sx(g.atTicks)}
-                y1={0}
-                y2={VIEW_H}
-              />
-            ) : (
-              <line
-                className="plan__guide"
-                key={`gh${g.sourceIndex}`}
-                x1={0}
-                x2={VIEW_W}
-                y1={sy(g.atTicks)}
-                y2={sy(g.atTicks)}
-              />
-            )
-          )}
+        {showPreview && guideCues(camera, draft.guides)}
 
         {/* Mid-draw polyline: transient UI, not canonical geometry. */}
         {store.pendingPicks.length > 0 && (
@@ -641,22 +855,6 @@ export function PlanView({ store }: PlanViewProps) {
           />
         )}
 
-        {/* Rubber-band segment from the last vertex to the live cursor (footprint tool). */}
-        {showPreview && isFootprint && anchor && (
-          <line
-            className="plan__rubber"
-            x1={sx(anchor.x)}
-            x2={sx(draft.point.x)}
-            y1={sy(anchor.y)}
-            y2={sy(draft.point.y)}
-          />
-        )}
-
-        {/* Rectangle rubber-band: the axis-aligned box from the first corner to the cursor. */}
-        {showPreview &&
-          isRectangle &&
-          rectanglePreviewCue(camera, anchor, draft.point)}
-
         {store.pendingPicks.map((p) => (
           <circle
             className="plan__vertex"
@@ -667,45 +865,19 @@ export function PlanView({ store }: PlanViewProps) {
           />
         ))}
 
-        {/* Close target: a click here closes the ring — make it unmistakable. */}
-        {showPreview && draft.closing && store.pendingPicks[0] && (
-          <g className="plan__close">
-            <circle
-              cx={sx(store.pendingPicks[0].x)}
-              cy={sy(store.pendingPicks[0].y)}
-              r={9}
-            />
-            <text
-              x={sx(store.pendingPicks[0].x) + 13}
-              y={sy(store.pendingPicks[0].y) - 9}
-            >
-              Close
-            </text>
-          </g>
-        )}
-
-        {/* Live cursor + dimension readout while drawing. */}
-        {showPreview && !draft.closing && (
-          <circle
-            className="plan__cursor"
-            cx={sx(draft.point.x)}
-            cy={sy(draft.point.y)}
-            r={3.5}
+        {/* The transient draw preview under the cursor (rubber-band, close target, readout, snap). */}
+        {showPreview && (
+          <DrawPreview
+            anchor={anchor}
+            camera={camera}
+            draft={draft}
+            firstPick={store.pendingPicks[0] ?? null}
+            isFootprint={isFootprint}
+            isRectangle={isRectangle}
+            liveSegment={liveSegment}
+            snap={snap}
           />
         )}
-        {showPreview &&
-          isFootprint &&
-          liveSegment &&
-          liveSegment.lengthTicks > 0 &&
-          !draft.closing && (
-            <text
-              className="plan__dim"
-              x={sx(draft.point.x) + 10}
-              y={sy(draft.point.y) - 10}
-            >
-              {segmentReadout(liveSegment.lengthTicks, liveSegment.angleDeg)}
-            </text>
-          )}
 
         {/* The engine's canonical footprint, read from the mirror. */}
         {hasRing && footprint && (

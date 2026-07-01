@@ -39,8 +39,9 @@ badge**. Always on, always visual, never a settings dialog.
   mirroring [`plan-selection.ts`](../../apps/web/src/plan-selection.ts) and `plan-camera.ts`: no React,
   no DOM, unit-tested directly. This is where constant felt tolerance lives (it has the camera), and
   where colored cues + badges (pure presentation) belong. It **supersedes `tool-runner`'s
-  `inferAlignment`**, consolidating all snapping in one place. *This is the load-bearing call and
-  should be recorded as an ADR (0014), the way selection's was ([ADR 0013](../adr/0013-selection-model.md)).*
+  `inferAlignment`**, consolidating all snapping in one place. Recorded as
+  [ADR 0014](../adr/0014-plan-inference-and-snapping-model.md), the way selection's was
+  ([ADR 0013](../adr/0013-selection-model.md)).
 - **The engine stays the source of truth; snapping is presentation.** The module resolves the raw
   cursor to a snapped world point, and the view commits it through the **existing `pick({ exact: true })`
   path** — the same channel typed-length entry already uses. So `tool-runner` stays pixel-free (its
@@ -84,19 +85,18 @@ X-axis line are different mark types, as in SketchUp). Every color is redundant 
 
 ## Phases (each keeps `main` green)
 
-1. **Pure `plan-snap.ts` module.** The `Snap` union (kind + snapped world point + guide lines + badge)
-   and `resolveSnap(camera, ring, pending, cursor, lock)` with the priority above. Absorbs the current
-   from-point alignment. Reuses screen-space `distanceToSegment` (extract the shared bit from
-   `plan-selection.ts`). Unit-tested with no React — the bulk of the correctness surface lands here.
-2. **Point snaps + cues.** Wire endpoint / midpoint / on-edge to the committed ring; render colored
-   markers + the badge; commit via `pick({ exact: true })`. Retire `inferAlignment` (and migrate its
-   guide rendering + tests) in favor of the module.
+1. ✅ **Pure `plan-snap.ts` module.** The `Snap` union (kind + snapped world point) and
+   `resolveSnap(camera, ring, pending, cursor)` with the point-snap priority. Reuses screen-space
+   `projectToSegment` (extracted from `plan-selection.ts`). Unit-tested with no React.
+2. ✅ **Point snaps + cues.** Endpoint / midpoint / on-edge to the committed ring + pending picks;
+   colored markers (shape+color) + the badge; commit via `pick({ exact: true })`. Works for both plan
+   draw tools (footprint + rectangle). `inferAlignment`'s from-point guides still render alongside for
+   now; they fold into the module in phase 3.
 3. **Linear inference + locks.** On-axis inference (no `Shift` needed), parallel / perpendicular,
-   generalized `Shift`-lock, and arrow-key axis lock; axis / inference lines + the badge.
-4. **Polish + sync.** Rectangle-tool coverage, hysteresis if the point proves jittery (prefer the
-   currently-held snap within a slightly wider band), a copy pass on the badges (`copy.md`), and doc
-   sync (`surfaces-plan-view.md`, any new CONTEXT noun like *snap* / *inference*, and graduating the
-   `coverage-gaps.md` "no angle guide / no snapping" entry).
+   generalized `Shift`-lock, and arrow-key axis lock; axis / inference lines + the badge. Retires
+   `inferAlignment` into the module.
+4. **Polish + sync.** Hysteresis if the point proves jittery (prefer the currently-held snap within a
+   slightly wider band) and a copy pass on the badges (`copy.md`).
 
 ## Smaller engineering calls (mine to make; recorded so they're not re-litigated)
 
