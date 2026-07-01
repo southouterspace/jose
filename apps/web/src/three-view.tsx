@@ -58,6 +58,9 @@ const PUSHPULL_TICKS_PER_PIXEL = 6;
 interface SceneHandle {
   readonly camera: PerspectiveCamera;
   readonly controls: OrbitControls;
+  /** The footprint the mass currently renders against — the live push/pull preview rebuilds from it
+   *  each pointer-move without waiting for a recompute. `null` before the first draw. */
+  footprint: FootprintMirror | null;
   /** Signature of the footprint the camera was last framed against. A *footprint* change re-frames
    *  the view; a *height-only* (push/pull) change must not yank the camera (the user may be mid-
    *  orbit). `null` until the first frame is set. */
@@ -146,36 +149,27 @@ function disposeMass(handle: SceneHandle): void {
 }
 
 /**
- * (Re)build the mass mesh from the canonical footprint + height. A freshly drawn footprint carries
- * **no volume** (the engine does not auto-extrude it, ADR 0008): it renders as the flat drawn face
- * on the ground, outlined so it reads as a polygon. Once a push/pull lifts it, the same footprint
- * gains walls (an extruded prism, +Y by `height`). The top cap is always a **separate, named mesh**
- * — flat on the ground or the prism lid — so push/pull picking identifies it without a normal
- * heuristic, and dragging it up is what extrudes the face into a mass.
+ * Build (and attach) the mass meshes for `footprint` at `heightTicks`, replacing any existing group.
+ * A height of 0 renders the flat drawn face on the ground, outlined so it reads as a polygon; a
+ * positive height adds walls (an extruded prism, +Y). The top cap is always a **separate, named
+ * mesh** — flat on the ground or the prism lid — so push/pull picking identifies it without a normal
+ * heuristic.
+ *
+ * Pure geometry: it does **not** touch `handle.heightTicks` / `volumeId` / the camera — callers own
+ * those. This is what lets the live push/pull preview re-render at an arbitrary height each
+ * pointer-move without disturbing the drag's starting height or yanking the camera.
  */
-function rebuildMass(
+function renderMass(
   handle: SceneHandle,
-  footprint: FootprintMirror | null,
-  volume: VolumeMirror | null
+  footprint: FootprintMirror,
+  heightTicks: number
 ): void {
   disposeMass(handle);
-  if (!footprint) {
-    return;
-  }
   const shape = footprintShape(footprint);
   if (!shape) {
     return;
   }
-
-  // Read the height from the volume when the face has been extruded; otherwise render flat (0) —
-  // the 3D view never auto-extrudes the drawn face.
-  const hasVolume = volume !== null && volume.count >= 1;
-  const vol = hasVolume ? volume.row(0) : null;
-  const heightTicks = vol ? vol.height : 0;
   const heightUnits = heightTicks / TICKS_PER_UNIT;
-  handle.volumeId = vol ? vol.volumeId : VOLUME_ID;
-  handle.heightTicks = heightTicks;
-
   const group = new Group();
 
   // Walls + their wireframe only once the face has been extruded into a prism (height > 0).
@@ -235,6 +229,35 @@ function rebuildMass(
   handle.scene.add(group);
   handle.massGroup = group;
   handle.topMesh = topMesh;
+}
+
+/**
+ * (Re)build the mass from the **canonical** footprint + volume, then re-frame the camera on a fresh
+ * draw. A freshly drawn footprint carries no volume (the engine does not auto-extrude it, ADR 0008),
+ * so it renders flat until a push/pull lifts it. Records the canonical height + footprint on the
+ * handle so the live preview has a starting point.
+ */
+function rebuildMass(
+  handle: SceneHandle,
+  footprint: FootprintMirror | null,
+  volume: VolumeMirror | null
+): void {
+  if (!footprint) {
+    disposeMass(handle);
+    handle.footprint = null;
+    return;
+  }
+
+  // Read the height from the volume when the face has been extruded; otherwise render flat (0) —
+  // the 3D view never auto-extrudes the drawn face.
+  const hasVolume = volume !== null && volume.count >= 1;
+  const vol = hasVolume ? volume.row(0) : null;
+  const heightTicks = vol ? vol.height : 0;
+  handle.volumeId = vol ? vol.volumeId : VOLUME_ID;
+  handle.heightTicks = heightTicks;
+  handle.footprint = footprint;
+
+  renderMass(handle, footprint, heightTicks);
 
   // Re-frame the camera ONLY when the footprint geometry changed (a fresh draw) — not on a
   // height-only push/pull, which must leave the camera where the user left it (possibly mid-orbit).
@@ -306,6 +329,7 @@ export function ThreeView({ store }: ThreeViewProps) {
       topMesh: null,
       volumeId: 0,
       heightTicks: 0,
+      footprint: null,
       footprintSig: null,
     };
     handleRef.current = handle;
@@ -380,7 +404,9 @@ export function ThreeView({ store }: ThreeViewProps) {
       event.preventDefault();
     };
 
-    // Live feedback: while dragging, surface the push/pull distance so the cap isn't dragged blind.
+    // Live feedback: while dragging, surface the push/pull distance AND deform the mass to match, so
+    // the cap tracks the cursor instead of jumping only after release. Both are transient client
+    // state (ADR 0008): the canonical rebuild on command-return snaps the mass to engine truth.
     const onPointerMove = (event: PointerEvent): void => {
       if (!dragging) {
         return;
@@ -390,6 +416,16 @@ export function ThreeView({ store }: ThreeViewProps) {
         PUSHPULL_TICKS_PER_PIXEL
       );
       showReadout(event, distance);
+      // Preview the resulting mass at the dragged height (clamped at 0 — the cap flattens to the
+      // floor rather than inverting). `renderMass` leaves handle.heightTicks/camera untouched, so
+      // the drag's starting height and the user's orbit are preserved.
+      if (handle.footprint) {
+        renderMass(
+          handle,
+          handle.footprint,
+          Math.max(0, dragStartHeight + distance)
+        );
+      }
     };
 
     const onPointerUp = (event: PointerEvent): void => {
