@@ -107,3 +107,11 @@ ports/adapters so storage stays out of the domain, mirroring how render stays ou
 - **Linting/formatting is Biome with the Ultracite preset** (`biome.jsonc`). It deliberately
   excludes `docs/**` and `schema/**` (hand-authored deliverable/data, not source) and the
   `generated/` output; don't widen those without reason.
+- **User-facing work starts with the `product-design` skill.** Any change to what a user sees,
+  understands, chooses, or does in `apps/web` (a flow, viewport, toolbar, status/copy, tool, or a
+  reachable state) — and any audit/review of it — **invokes the `product-design` skill first**, before
+  writing code. It routes the canonical language (`apps/web/CONTEXT.md`), the per-surface specs, the
+  one-direction rule, the reachable-state map, and the verify step (which includes rendering the real
+  viewport — never claim visual verification from code alone). When you finish, sync the surface docs
+  and `CONTEXT.md` nouns you touched. Skip only for engine/domain work in `crates/` with no
+  user-visible effect, the MODEL/generated files, `apps/api`, or build tooling.
