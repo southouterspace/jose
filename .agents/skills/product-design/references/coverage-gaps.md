@@ -37,14 +37,19 @@ then move it into a reference/rule/exemplar and delete it here.
 
 ## Plan view
 
-- **No pan/zoom** — fixed window on the world; off-view geometry is unreachable.
-- **No snapping or dimension guides** — picks land at the raw cursor tick; the plan intends snapping,
-  it isn't built.
-- **No post-close footprint editing** — no vertex drag/insert/delete.
+- **Pan/zoom + Zoom-Extents exist** (P0 #2) — scroll zooms to the cursor, middle-drag pans, Fit /
+  Shift+Z frames the drawing, all through a stateful `PlanCamera`. **Still uncovered:** touch
+  pinch-zoom, and the plan has no explicit zoom-level readout.
+- **No grid snapping or angle guide** — picks land at the raw cursor tick; a live length readout and
+  alignment guides exist, but grid snap and an angle guide aren't built.
+- **Selection exists** (P0 #3) — the select tool picks a vertex/edge/footprint with hover + Esc-clear
+  (`plan-selection.ts`, ADR 0013). **Still uncovered:** multi-select, window/crossing box-select, and
+  the editing it unlocks — no vertex drag/insert/delete yet.
 
 ## 3D view
 
-- **No selection or hover affordance** — the grabbable top cap isn't signaled until you try it.
+- **No selection or hover affordance** — the grabbable top cap isn't signaled until you try it, and
+  plan selection (P0 #3) does not extend to the mass/faces in 3D yet.
 - **Typed height entry lands only after a mass exists** — the value box (`ValueBox`, `value: "height"`)
   sets an exact height, but Push/Pull is gated on an existing mass, so the *first* extrude is still
   gesture-only. Invalid typed input now raises a toast (`store.flagRejection`) instead of being

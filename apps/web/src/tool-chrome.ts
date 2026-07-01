@@ -13,6 +13,7 @@
  */
 
 import { TOOL_CATALOG } from "@jose/tool-runner";
+import type { SelectionKind } from "./plan-selection";
 
 /** A viewport a tool operates in. */
 export type Surface = "3d" | "plan";
@@ -32,6 +33,8 @@ export interface ChromeState {
   readonly heightFeet: number | null;
   /** Mid-draw picks for the active tool (transient). */
   readonly pendingPicks: number;
+  /** What is currently selected, or `null` — drives the Select tool's status copy (ADR 0013). */
+  readonly selectedKind: SelectionKind | null;
 }
 
 /** A user-facing tool's presentation contract. Keyed by the same key the runner / gesture layer
@@ -74,8 +77,33 @@ function footprintStatus(state: ChromeState): string {
   return "Ready — Footprint tool active; click to place vertices (hold Shift to lock to an axis)";
 }
 
+/** How each selectable piece reads in the status bar. */
+const SELECTION_NOUN: Record<SelectionKind, string> = {
+  footprint: "the footprint",
+  vertex: "a vertex",
+  edge: "an edge",
+};
+
+/** The Select tool's status line: what's picked, or how to pick. */
+function selectStatus(state: ChromeState): string {
+  if (state.selectedKind) {
+    return `Selected ${SELECTION_NOUN[state.selectedKind]} — Esc to clear`;
+  }
+  return "Select — click a vertex, edge, or the footprint to select it";
+}
+
 /** The user-facing tools, in toolbar order. */
 export const TOOL_CHROME: readonly ToolChrome[] = [
+  {
+    key: "select",
+    label: "Select",
+    shortcut: "s",
+    surfaces: ["plan"],
+    value: "none",
+    runnerBacked: false,
+    enabled: () => true,
+    status: selectStatus,
+  },
   {
     key: "footprint",
     label: "Footprint",

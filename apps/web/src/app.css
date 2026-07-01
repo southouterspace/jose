@@ -101,6 +101,31 @@ body {
   cursor: crosshair;
 }
 
+/* Plan navigation controls (Zoom-Extents), pinned top-right, out of the drawing area. */
+.plan__nav {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  display: flex;
+  gap: 0.4rem;
+}
+
+.plan__navbtn {
+  padding: 0.25rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #cfe0ff;
+  cursor: pointer;
+  background: rgb(32 32 36 / 92%);
+  border: 1px solid #3a3a40;
+  border-radius: 4px;
+}
+
+.plan__navbtn:hover {
+  background: rgb(46 46 54 / 95%);
+  border-color: #4a4a52;
+}
+
 .plan__grid line {
   stroke: #2f2f37;
   stroke-width: 1;
@@ -167,6 +192,54 @@ body {
   fill: rgb(110 168 254 / 18%);
   stroke: #6ea8fe;
   stroke-width: 2;
+}
+
+/* Selection cues (committed pick) — a warm highlight over the canonical ring. */
+.plan__sel {
+  pointer-events: none;
+  fill: none;
+  stroke: #ffb454;
+}
+
+.plan__sel--vertex {
+  fill: #ffb454;
+  stroke: #1b1b1f;
+  stroke-width: 1.5;
+}
+
+.plan__sel--edge {
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.plan__sel--face {
+  fill: rgb(255 180 84 / 16%);
+  stroke-width: 2.5;
+}
+
+/* Hover cues (what a click would pick) — the same warm hue, quieter. */
+.plan__hover {
+  pointer-events: none;
+  fill: none;
+  stroke: rgb(255 180 84 / 65%);
+}
+
+.plan__hover--vertex {
+  fill: rgb(255 180 84 / 45%);
+  stroke: rgb(255 180 84 / 80%);
+  stroke-width: 1.5;
+}
+
+.plan__hover--edge {
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 4 3;
+}
+
+.plan__hover--face {
+  fill: rgb(255 180 84 / 8%);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
 }
 
 /* Shared measurement value box (SketchUp's VCB), docked bottom-right of whichever surface hosts it
