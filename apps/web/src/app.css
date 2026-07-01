@@ -161,8 +161,9 @@ body {
   stroke-width: 2;
 }
 
-/* Value-entry box (SketchUp-style measurement box), docked bottom-right of the plan view. */
-.plan__measure {
+/* Shared measurement value box (SketchUp's VCB), docked bottom-right of whichever surface hosts it
+   — the 3D view for height entry today; the plan's own box migrates onto it next (ADR 0012 §4). */
+.value-box {
   position: absolute;
   right: 0.75rem;
   bottom: 0.75rem;
@@ -178,16 +179,16 @@ body {
   transition: opacity 120ms ease;
 }
 
-.plan__measure[data-active="true"] {
+.value-box[data-active="true"] {
   opacity: 1;
 }
 
-.plan__measure-label {
+.value-box__label {
   color: #9aa;
   letter-spacing: 0.04em;
 }
 
-.plan__measure-input {
+.value-box__input {
   width: 6.5rem;
   padding: 0.2rem 0.35rem;
   font: inherit;
@@ -197,17 +198,18 @@ body {
   border-radius: 3px;
 }
 
-.plan__measure-input:focus-visible {
+.value-box__input:focus-visible {
   outline: 2px solid #6ea8fe;
   outline-offset: 1px;
 }
 
-.plan__measure-input:disabled {
+.value-box__input:disabled {
   cursor: default;
   opacity: 0.6;
 }
 
 .three {
+  position: relative;
   display: block;
   width: 100%;
   height: 100%;
@@ -216,6 +218,23 @@ body {
 
 .three canvas {
   display: block;
+}
+
+/* Live push/pull distance readout — the first brick of the 3D HUD layer (ADR 0012). Follows the
+   cursor during a push/pull drag; pointer-inert so it never intercepts the gesture. */
+.three__readout {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #cfe0ff;
+  white-space: nowrap;
+  pointer-events: none;
+  background: rgb(32 32 36 / 92%);
+  border: 1px solid #3a3a40;
+  border-radius: 5px;
 }
 
 .viewport__label {

@@ -30,6 +30,11 @@ keep the top cap visually and structurally identifiable as the interactive face.
 - Active only with the Push/Pull tool **and** an existing mass. A pointer-down that raycasts the top
   cap starts a drag; vertical pointer movement maps (via `pushPullDistance`) to a signed tick delta
   dispatched as `PushPull { volumeId, TOP_FACE, distance }`.
+- **A live distance readout follows the cursor during the drag** (`three__readout`, fed by
+  `hud.ts`'s `pushPullReadout`): the resulting mass height plus the signed distance (`▲`/`▼`), in
+  feet/inches — so the cap isn't dragged blind. This is the first brick of the 3D HUD layer
+  ([ADR 0012](../../../docs/adr/0012-tool-chrome-framework.md)); it is pointer-inert and hidden when
+  not dragging. It is a *readout*, not a typed **input** (see coverage gaps).
 - **Reference the engine's named face, never a guessed normal.** `TOP_FACE` is the kernel's named
   face index (`crates/geometry-kernel/.../brep.rs`); the code confirms the world normal is vertical
   as a sanity check, but the source of truth is the named face (ADR 0008 §3). Don't pick by
@@ -51,8 +56,12 @@ mass reads as a solid.
 
 - **No selection / no hover affordance** — there's no indication the top cap is grabbable until you
   try, and no other pickable element.
-- **No numeric height input** — height is gesture-only; there's no typed-dimension path (and if you
-  add one, it needs validation per `resilience.md`).
+- **Typed height entry exists, but only once a mass exists.** The value box (`ValueBox`, docked when
+  the active tool's `value` grammar is `height`, ADR 0012 §4) accepts an absolute height in
+  feet/inches and commits it as a signed push/pull delta. It's gated by the tool's enablement
+  (Push/Pull needs a mass), so you still can't type a height on a flat, not-yet-extruded face — that
+  first extrude is gesture-only. Invalid input is silently ignored (no rejected-value treatment yet,
+  `resilience.md`).
 - **No any-face push/pull** — top-cap vertical only by decision (ADR 0007 §3); don't imply otherwise.
 - **No framing/studs** — massing solids only in the MVP.
 

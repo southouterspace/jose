@@ -14,8 +14,8 @@
  */
 
 import type { FootprintMirror, VolumeMirror } from "@jose/render-mirror";
-import { pushPullDistance } from "@jose/tool-runner";
-import { useEffect, useRef } from "react";
+import { formatLength, parseLength, pushPullDistance } from "@jose/tool-runner";
+import { useEffect, useRef, useState } from "react";
 import {
   Color,
   DirectionalLight,
@@ -39,7 +39,10 @@ import {
 } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { EngineStore } from "./engine-store";
+import { pushPullReadout } from "./hud";
 import { frameMass, TICKS_PER_UNIT } from "./mass-tessellation";
+import { toolChrome } from "./tool-chrome";
+import { ValueBox } from "./value-box";
 
 /** The kernel's top cap face index (`crates/geometry-kernel/src/brep.rs` `TOP_FACE`). The 3D view
  *  references the engine's named face — it never invents one (ADR 0008 §3). */
@@ -57,10 +60,15 @@ const PUSHPULL_TICKS_PER_PIXEL = 6;
 interface SceneHandle {
   readonly camera: PerspectiveCamera;
   readonly controls: OrbitControls;
+  /** The footprint the mass currently renders against — the live push/pull preview rebuilds from it
+   *  each pointer-move without waiting for a recompute. `null` before the first draw. */
+  footprint: FootprintMirror | null;
   /** Signature of the footprint the camera was last framed against. A *footprint* change re-frames
    *  the view; a *height-only* (push/pull) change must not yank the camera (the user may be mid-
    *  orbit). `null` until the first frame is set. */
   footprintSig: string | null;
+  /** Height (ticks) of the current mass — the push/pull drag reads this as its starting height. */
+  heightTicks: number;
   /** The current mass group (base + top + sides), or null before the first volume. */
   massGroup: Group | null;
   readonly renderer: WebGLRenderer;
@@ -143,35 +151,27 @@ function disposeMass(handle: SceneHandle): void {
 }
 
 /**
- * (Re)build the mass mesh from the canonical footprint + height. A freshly drawn footprint carries
- * **no volume** (the engine does not auto-extrude it, ADR 0008): it renders as the flat drawn face
- * on the ground, outlined so it reads as a polygon. Once a push/pull lifts it, the same footprint
- * gains walls (an extruded prism, +Y by `height`). The top cap is always a **separate, named mesh**
- * — flat on the ground or the prism lid — so push/pull picking identifies it without a normal
- * heuristic, and dragging it up is what extrudes the face into a mass.
+ * Build (and attach) the mass meshes for `footprint` at `heightTicks`, replacing any existing group.
+ * A height of 0 renders the flat drawn face on the ground, outlined so it reads as a polygon; a
+ * positive height adds walls (an extruded prism, +Y). The top cap is always a **separate, named
+ * mesh** — flat on the ground or the prism lid — so push/pull picking identifies it without a normal
+ * heuristic.
+ *
+ * Pure geometry: it does **not** touch `handle.heightTicks` / `volumeId` / the camera — callers own
+ * those. This is what lets the live push/pull preview re-render at an arbitrary height each
+ * pointer-move without disturbing the drag's starting height or yanking the camera.
  */
-function rebuildMass(
+function renderMass(
   handle: SceneHandle,
-  footprint: FootprintMirror | null,
-  volume: VolumeMirror | null
+  footprint: FootprintMirror,
+  heightTicks: number
 ): void {
   disposeMass(handle);
-  if (!footprint) {
-    return;
-  }
   const shape = footprintShape(footprint);
   if (!shape) {
     return;
   }
-
-  // Read the height from the volume when the face has been extruded; otherwise render flat (0) —
-  // the 3D view never auto-extrudes the drawn face.
-  const hasVolume = volume !== null && volume.count >= 1;
-  const vol = hasVolume ? volume.row(0) : null;
-  const heightTicks = vol ? vol.height : 0;
   const heightUnits = heightTicks / TICKS_PER_UNIT;
-  handle.volumeId = vol ? vol.volumeId : VOLUME_ID;
-
   const group = new Group();
 
   // Walls + their wireframe only once the face has been extruded into a prism (height > 0).
@@ -231,6 +231,35 @@ function rebuildMass(
   handle.scene.add(group);
   handle.massGroup = group;
   handle.topMesh = topMesh;
+}
+
+/**
+ * (Re)build the mass from the **canonical** footprint + volume, then re-frame the camera on a fresh
+ * draw. A freshly drawn footprint carries no volume (the engine does not auto-extrude it, ADR 0008),
+ * so it renders flat until a push/pull lifts it. Records the canonical height + footprint on the
+ * handle so the live preview has a starting point.
+ */
+function rebuildMass(
+  handle: SceneHandle,
+  footprint: FootprintMirror | null,
+  volume: VolumeMirror | null
+): void {
+  if (!footprint) {
+    disposeMass(handle);
+    handle.footprint = null;
+    return;
+  }
+
+  // Read the height from the volume when the face has been extruded; otherwise render flat (0) —
+  // the 3D view never auto-extrudes the drawn face.
+  const hasVolume = volume !== null && volume.count >= 1;
+  const vol = hasVolume ? volume.row(0) : null;
+  const heightTicks = vol ? vol.height : 0;
+  handle.volumeId = vol ? vol.volumeId : VOLUME_ID;
+  handle.heightTicks = heightTicks;
+  handle.footprint = footprint;
+
+  renderMass(handle, footprint, heightTicks);
 
   // Re-frame the camera ONLY when the footprint geometry changed (a fresh draw) — not on a
   // height-only push/pull, which must leave the camera where the user left it (possibly mid-orbit).
@@ -247,12 +276,15 @@ export interface ThreeViewProps {
 
 export function ThreeView({ store }: ThreeViewProps) {
   const mountRef = useRef<HTMLDivElement>(null);
+  const readoutRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<SceneHandle | null>(null);
   // The active tool gates the drag; keep a ref so pointer handlers read the live value.
   const toolRef = useRef(store.activeTool);
   toolRef.current = store.activeTool;
   const pushPullRef = useRef(store.pushPull);
   pushPullRef.current = store.pushPull;
+  // Typed-height entry (the value box's "height" grammar, ADR 0012 §4) — React state, not per-frame.
+  const [heightInput, setHeightInput] = useState("");
 
   // Mount-once effect: build the imperative scene and the render loop.
   useEffect(() => {
@@ -300,6 +332,8 @@ export function ThreeView({ store }: ThreeViewProps) {
       massGroup: null,
       topMesh: null,
       volumeId: 0,
+      heightTicks: 0,
+      footprint: null,
       footprintSig: null,
     };
     handleRef.current = handle;
@@ -325,14 +359,28 @@ export function ThreeView({ store }: ThreeViewProps) {
     // --- Push/pull drag state (imperative; never React per-frame state) ---
     const raycaster = new Raycaster();
     const pointer = new Vector2();
+    const readout = readoutRef.current;
     let dragging = false;
     let dragStartY = 0;
     let dragVolumeId = 0;
+    let dragStartHeight = 0;
 
     const setPointer = (event: PointerEvent): void => {
       const rect = renderer.domElement.getBoundingClientRect();
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    };
+
+    // Position the distance readout just off the cursor and fill it with the live push/pull text.
+    const showReadout = (event: PointerEvent, distance: number): void => {
+      if (!readout) {
+        return;
+      }
+      const rect = renderer.domElement.getBoundingClientRect();
+      readout.style.left = `${event.clientX - rect.left + 16}px`;
+      readout.style.top = `${event.clientY - rect.top + 12}px`;
+      readout.textContent = pushPullReadout(dragStartHeight, distance);
+      readout.hidden = false;
     };
 
     const onPointerDown = (event: PointerEvent): void => {
@@ -353,9 +401,35 @@ export function ThreeView({ store }: ThreeViewProps) {
       dragging = true;
       dragStartY = event.clientY;
       dragVolumeId = handle.volumeId;
+      dragStartHeight = handle.heightTicks;
       controls.enabled = false; // freeze orbit while pushing/pulling
       renderer.domElement.setPointerCapture(event.pointerId);
+      showReadout(event, 0); // 0-distance: names the current height until the drag moves
       event.preventDefault();
+    };
+
+    // Live feedback: while dragging, surface the push/pull distance AND deform the mass to match, so
+    // the cap tracks the cursor instead of jumping only after release. Both are transient client
+    // state (ADR 0008): the canonical rebuild on command-return snaps the mass to engine truth.
+    const onPointerMove = (event: PointerEvent): void => {
+      if (!dragging) {
+        return;
+      }
+      const distance = pushPullDistance(
+        event.clientY - dragStartY,
+        PUSHPULL_TICKS_PER_PIXEL
+      );
+      showReadout(event, distance);
+      // Preview the resulting mass at the dragged height (clamped at 0 — the cap flattens to the
+      // floor rather than inverting). `renderMass` leaves handle.heightTicks/camera untouched, so
+      // the drag's starting height and the user's orbit are preserved.
+      if (handle.footprint) {
+        renderMass(
+          handle,
+          handle.footprint,
+          Math.max(0, dragStartHeight + distance)
+        );
+      }
     };
 
     const onPointerUp = (event: PointerEvent): void => {
@@ -368,17 +442,22 @@ export function ThreeView({ store }: ThreeViewProps) {
       );
       dragging = false;
       controls.enabled = true;
+      if (readout) {
+        readout.hidden = true;
+      }
       renderer.domElement.releasePointerCapture(event.pointerId);
       pushPullRef.current(dragVolumeId, TOP_FACE, distance);
     };
 
     renderer.domElement.addEventListener("pointerdown", onPointerDown);
+    renderer.domElement.addEventListener("pointermove", onPointerMove);
     renderer.domElement.addEventListener("pointerup", onPointerUp);
 
     return () => {
       cancelAnimationFrame(raf);
       observer.disconnect();
       renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+      renderer.domElement.removeEventListener("pointermove", onPointerMove);
       renderer.domElement.removeEventListener("pointerup", onPointerUp);
       disposeMass(handle);
       controls.dispose();
@@ -399,5 +478,45 @@ export function ThreeView({ store }: ThreeViewProps) {
     rebuildMass(handle, store.footprint, store.volume);
   }, [store.footprint, store.volume]);
 
-  return <div className="three" ref={mountRef} />;
+  // The value box docks here when the active tool's grammar is "height" (push/pull): type an exact
+  // mass height and the drag's absolute target becomes a signed distance from the current height.
+  const hasMass = store.volume !== null && store.volume.count >= 1;
+  const current = hasMass ? store.volume?.row(0) : undefined;
+  const currentHeightTicks = current?.height ?? 0;
+  const currentVolumeId = current?.volumeId ?? VOLUME_ID;
+  const showHeightEntry = toolChrome(store.activeTool)?.value === "height";
+
+  // Height has no axis-lock notion; the submit modifiers are irrelevant here.
+  const submitHeight = (): void => {
+    const target = parseLength(heightInput);
+    if (target !== null) {
+      // parseLength yields an absolute height; push/pull carries a signed delta from where we are.
+      store.pushPull(currentVolumeId, TOP_FACE, target - currentHeightTicks);
+    }
+    setHeightInput("");
+  };
+
+  return (
+    <div className="three" ref={mountRef}>
+      {/* The 3D HUD layer (ADR 0012): a cursor-following push/pull distance readout. Pointer-inert
+          so it never fights the drag; positioned imperatively from the pointer handlers. */}
+      <div
+        aria-hidden="true"
+        className="three__readout"
+        hidden
+        ref={readoutRef}
+      />
+      {showHeightEntry && (
+        <ValueBox
+          ariaLabel="Mass height in feet and inches"
+          label="Height"
+          onCancel={() => setHeightInput("")}
+          onChange={setHeightInput}
+          onSubmit={submitHeight}
+          placeholder={formatLength(currentHeightTicks)}
+          value={heightInput}
+        />
+      )}
+    </div>
+  );
 }

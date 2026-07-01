@@ -16,8 +16,9 @@
 import type { FootprintMirror } from "@jose/render-mirror";
 import type { DraftPoint } from "@jose/tool-runner";
 import { formatLength, parseLength, pointAtDistance } from "@jose/tool-runner";
-import { type KeyboardEvent, type PointerEvent, useRef, useState } from "react";
+import { type PointerEvent, useRef, useState } from "react";
 import type { EngineStore } from "./engine-store";
+import { ValueBox } from "./value-box";
 
 /** Screen pixels per world tick. 1 tick = 1/32in; ~0.05 px/tick ≈ a 10ft wall is ~192px. */
 const PX_PER_TICK = 0.05;
@@ -168,18 +169,6 @@ export function PlanView({ store }: PlanViewProps) {
     setDraft(null);
   };
 
-  const onLengthKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      commitLength(event.shiftKey);
-    } else if (event.key === "Escape") {
-      event.preventDefault();
-      setLengthInput("");
-      store.cancelDraw();
-      setDraft(null);
-    }
-  };
-
   const footprint = store.footprint;
   const hasRing = footprint !== null && footprint.count >= 3;
   const showPreview = isFootprint && hovering && draft !== null;
@@ -305,25 +294,26 @@ export function PlanView({ store }: PlanViewProps) {
         )}
       </svg>
 
-      {/* Value-entry box: type an exact length, Enter to place the vertex along the cursor direction. */}
-      <label className="plan__measure" data-active={canEnterLength}>
-        <span className="plan__measure-label">Length</span>
-        <input
-          aria-label="Segment length in feet and inches"
-          className="plan__measure-input"
-          disabled={!canEnterLength}
-          inputMode="text"
-          onChange={(e) => setLengthInput(e.target.value)}
-          onKeyDown={onLengthKeyDown}
-          placeholder={
-            liveLength !== null && liveLength > 0
-              ? formatLength(Math.round(liveLength))
-              : `e.g. 10' 6"`
-          }
-          type="text"
-          value={lengthInput}
-        />
-      </label>
+      {/* Value-entry box (shared VCB): type an exact length, Enter to place the vertex along the
+          cursor direction; Shift+Enter locks it to an axis (ADR 0012 §4). */}
+      <ValueBox
+        ariaLabel="Segment length in feet and inches"
+        disabled={!canEnterLength}
+        label="Length"
+        onCancel={() => {
+          setLengthInput("");
+          store.cancelDraw();
+          setDraft(null);
+        }}
+        onChange={setLengthInput}
+        onSubmit={({ shiftKey }) => commitLength(shiftKey)}
+        placeholder={
+          liveLength !== null && liveLength > 0
+            ? formatLength(Math.round(liveLength))
+            : `e.g. 10' 6"`
+        }
+        value={lengthInput}
+      />
     </div>
   );
 }

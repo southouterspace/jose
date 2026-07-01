@@ -36,7 +36,9 @@ then move it into a reference/rule/exemplar and delete it here.
 ## 3D view
 
 - **No selection or hover affordance** — the grabbable top cap isn't signaled until you try it.
-- **No numeric height input** — gesture-only.
+- **Typed height entry lands only after a mass exists** — the value box (`ValueBox`, `value: "height"`)
+  sets an exact height, but Push/Pull is gated on an existing mass, so the *first* extrude is still
+  gesture-only; invalid typed input is silently ignored (no rejected-value state).
 
 ## Design system
 
