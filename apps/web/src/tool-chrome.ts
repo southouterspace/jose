@@ -86,19 +86,21 @@ function rectangleStatus(state: ChromeState): string {
   return "Ready — Rectangle tool active; click the first corner";
 }
 
-/** How each selectable piece reads in the status bar. */
-const SELECTION_NOUN: Record<SelectionKind, string> = {
-  footprint: "the footprint",
-  vertex: "a vertex",
-  edge: "an edge",
+/** The Select tool's status line once a piece is picked — each names the edit verb it now enables
+ *  (P2 #9): a vertex moves or deletes, an edge splits into a new vertex, the footprint has no verb yet
+ *  (whole-footprint move is P2 #10). */
+const SELECTED_STATUS: Record<SelectionKind, string> = {
+  vertex: "Selected a vertex — drag to move, Delete to remove, Esc to clear",
+  edge: "Selected an edge — drag it to add a vertex, Esc to clear",
+  footprint: "Selected the footprint — Esc to clear",
 };
 
-/** The Select tool's status line: what's picked, or how to pick. */
+/** The Select tool's status line: what's picked and what you can do to it, or how to pick + edit. */
 function selectStatus(state: ChromeState): string {
   if (state.selectedKind) {
-    return `Selected ${SELECTION_NOUN[state.selectedKind]} — Esc to clear`;
+    return SELECTED_STATUS[state.selectedKind];
   }
-  return "Select — click a vertex, edge, or the footprint to select it";
+  return "Select — click to select; drag a vertex to move it, or an edge to add one";
 }
 
 /** The user-facing tools, in toolbar order. */

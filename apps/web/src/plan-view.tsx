@@ -45,6 +45,7 @@ import {
   useState,
 } from "react";
 import type { EngineStore } from "./engine-store";
+import { insertOnEdge, moveVertex } from "./footprint-edit";
 import {
   edgeLabels,
   footprintExtents,
@@ -68,6 +69,7 @@ import {
 } from "./plan-camera";
 import {
   hitTest,
+  type Px,
   type RingVertex,
   type Selection,
   sameSelection,
@@ -89,6 +91,136 @@ const GRID_TICKS = 384;
 const GRID_HALF_TICKS = 7680;
 /** Per-notch wheel zoom factor (in on scroll-up, out on scroll-down). */
 const ZOOM_STEP = 1.1;
+/** How far (viewBox px) a Select-tool press must travel before it counts as an edit *drag* rather
+ *  than a *click* — the one gesture disambiguation behind "a click selects, a drag edits" (ADR 0015). */
+const EDIT_DRAG_THRESHOLD_PX = 4;
+/** Grid a dragged vertex snaps to when no inference snap applies, ticks (1in) — matches the draw grid. */
+const EDIT_GRID_TICKS = 32;
+/** No axis lock: the edit drag resolves point snaps only (endpoint / midpoint / on-edge). Shift/arrow
+ *  axis-lock during an edit is a deferred refinement (ADR 0015). */
+const EDIT_NO_LOCK: DrawLock = { axis: null, shift: false };
+
+/** An in-progress footprint edit (Select tool): dragging a ring vertex (`move`) or a new vertex split
+ *  onto an edge (`insert`). Tracked in a ref so pointer-move doesn't re-render per frame; `preview`
+ *  holds the latest edited ring so the pointer-up commit reads it without a stale closure. */
+interface EditDrag {
+  readonly index: number;
+  readonly kind: "insert" | "move";
+  moved: boolean;
+  readonly pointerId: number;
+  preview: readonly Point[] | null;
+  readonly startPx: Px;
+}
+
+/** Snap a dragged vertex onto the tick grid when no inference snap caught it (the draw path's fallback). */
+const snapToEditGrid = (p: Point): Point => ({
+  x: Math.round(p.x / EDIT_GRID_TICKS) * EDIT_GRID_TICKS,
+  y: Math.round(p.y / EDIT_GRID_TICKS) * EDIT_GRID_TICKS,
+});
+
+/** Resolve a client pointer into the world point an edit drag would place: a `plan-snap` point snap
+ *  (endpoint / midpoint / on-edge against `candidateRing` — the ring *without* the vertex being
+ *  dragged, so it never snaps to itself) when one applies, else the grid-snapped point under the
+ *  cursor. `null` only when the pointer can't be projected. */
+function resolveEditPoint(
+  camera: PlanCamera,
+  svg: SVGSVGElement | null,
+  candidateRing: readonly Point[],
+  clientX: number,
+  clientY: number
+): { world: Point; snap: Snap | null } | null {
+  const vb = viewBoxOf(svg, clientX, clientY);
+  if (!vb) {
+    return null;
+  }
+  const snap = resolveDraw(camera, candidateRing, [], vb, null, EDIT_NO_LOCK);
+  if (snap) {
+    return { world: snap.world, snap };
+  }
+  return {
+    world: snapToEditGrid({
+      x: toWorldX(camera, vb.px),
+      y: toWorldY(camera, vb.py),
+    }),
+    snap: null,
+  };
+}
+
+/** Continue an armed/active edit drag on a pointer-move: promote it to a real drag once it crosses
+ *  the threshold, then resolve the moved/inserted vertex (snapping through plan-snap) and publish the
+ *  transient preview ring + snap cue. Returns whether it consumed the event (so the caller skips hover
+ *  / draw handling); `false` only when the pointer isn't the one that started the drag. Mirrors
+ *  {@link continuePan}. */
+function continueEditDrag(
+  drag: EditDrag,
+  camera: PlanCamera,
+  ring: readonly Point[],
+  svg: SVGSVGElement | null,
+  event: PointerEvent<SVGSVGElement>,
+  setPreview: Dispatch<SetStateAction<readonly Point[] | null>>,
+  setSnap: Dispatch<SetStateAction<Snap | null>>
+): boolean {
+  if (event.pointerId !== drag.pointerId) {
+    return false;
+  }
+  const vb = viewBoxOf(svg, event.clientX, event.clientY);
+  if (!vb) {
+    return true;
+  }
+  const travelled = Math.hypot(
+    vb.px - drag.startPx.px,
+    vb.py - drag.startPx.py
+  );
+  if (!drag.moved && travelled < EDIT_DRAG_THRESHOLD_PX) {
+    return true; // still within click tolerance — not a drag yet.
+  }
+  drag.moved = true;
+  // Move: snap against the ring *without* the dragged vertex. Insert: the new vertex isn't in the ring
+  // yet, so the whole ring is a valid snap target.
+  const candidate =
+    drag.kind === "move" ? ring.filter((_, i) => i !== drag.index) : ring;
+  const r = resolveEditPoint(
+    camera,
+    svg,
+    candidate,
+    event.clientX,
+    event.clientY
+  );
+  if (!r) {
+    return true;
+  }
+  const preview =
+    drag.kind === "move"
+      ? moveVertex(ring, drag.index, r.world)
+      : insertOnEdge(ring, drag.index, r.world);
+  drag.preview = preview;
+  setPreview(preview);
+  setSnap(r.snap);
+  return true;
+}
+
+/** Arm an edit drag from a Select-tool press: a vertex/edge under the cursor returns the (not-yet-
+ *  moved) [`EditDrag`] to track; the face/empty space returns `null` and the caller selects instead. */
+function armEditDrag(
+  camera: PlanCamera,
+  svg: SVGSVGElement | null,
+  footprint: FootprintMirror | null,
+  event: PointerEvent<SVGSVGElement>
+): EditDrag | null {
+  const hit = pickAt(camera, svg, footprint, event.clientX, event.clientY);
+  const vb = viewBoxOf(svg, event.clientX, event.clientY);
+  if (vb && hit && (hit.kind === "vertex" || hit.kind === "edge")) {
+    return {
+      pointerId: event.pointerId,
+      kind: hit.kind === "vertex" ? "move" : "insert",
+      index: hit.index,
+      startPx: vb,
+      moved: false,
+      preview: null,
+    };
+  }
+  return null;
+}
 
 /** A highlight over a selected/hovered ring piece — a vertex dot, an edge line, or the whole face. */
 function selectionCue(
@@ -424,6 +556,68 @@ function edgeLengthCues(
   ));
 }
 
+/** The transient edit preview: the edited ring (a vertex moved / one inserted), rendered in place of
+ *  the canonical footprint while a Select-tool drag is live, with live edge-length labels and the snap
+ *  cue. Client-only until release — only the committed ring crosses into the engine (ADR 0015). */
+function EditPreview(props: {
+  readonly camera: PlanCamera;
+  readonly ring: readonly Point[];
+  readonly snap: Snap | null;
+}): ReactElement {
+  const { camera, ring } = props;
+  const verts: RingVertex[] = ring.map((p) => ({ x: p.x, y: p.y, spaceId: 0 }));
+  const points = verts
+    .map((v) => `${toScreenX(camera, v.x)},${toScreenY(camera, v.y)}`)
+    .join(" ");
+  return (
+    <g>
+      <polygon
+        className="plan__footprint plan__footprint--editing"
+        points={points}
+      />
+      {edgeLengthCues(camera, verts)}
+      {snapCue(camera, props.snap)}
+    </g>
+  );
+}
+
+/** The canonical footprint layer: the committed ring polygon, its edge-length labels, and the
+ *  selection/hover cues — *or*, while a Select-tool edit drag is live, the transient [`EditPreview`]
+ *  in its place (so the canonical ring and its edit never double up). Keeps PlanView's render body
+ *  free of the editing branch. */
+function FootprintLayer(props: {
+  readonly camera: PlanCamera;
+  readonly editPreview: readonly Point[] | null;
+  readonly footprint: FootprintMirror | null;
+  readonly hasRing: boolean;
+  readonly hoverCue: Selection | null;
+  readonly ringVertices: readonly RingVertex[];
+  readonly selection: Selection | null;
+  readonly snap: Snap | null;
+}): ReactElement {
+  const { camera, editPreview, footprint, hasRing, ringVertices } = props;
+  if (editPreview) {
+    return <EditPreview camera={camera} ring={editPreview} snap={props.snap} />;
+  }
+  const points =
+    hasRing && footprint
+      ? footprint
+          .vertices()
+          .map((v) => `${toScreenX(camera, v.x)},${toScreenY(camera, v.y)}`)
+          .join(" ")
+      : "";
+  return (
+    <g>
+      {hasRing && footprint && (
+        <polygon className="plan__footprint" points={points} />
+      )}
+      {hasRing && edgeLengthCues(camera, ringVertices)}
+      {selectionCue(camera, ringVertices, props.hoverCue, "hover")}
+      {selectionCue(camera, ringVertices, props.selection, "selected")}
+    </g>
+  );
+}
+
 /** A client pointer position in the fixed viewBox pixel space (independent of the element's size). */
 function viewBoxOf(
   svg: SVGSVGElement | null,
@@ -585,14 +779,15 @@ function visibleHover(
   return isSelect && !sameSelection(hover, selection) ? hover : null;
 }
 
-/** The cursor for the plan surface: grabbing while panning, an arrow/pointer in select mode, else the
- *  CSS crosshair (`undefined` defers to the stylesheet). */
+/** The cursor for the plan surface: grabbing while panning or dragging an edit, a pointer over a
+ *  draggable ring piece in select mode, else the CSS crosshair (`undefined` defers to the stylesheet). */
 function surfaceCursor(
   panning: boolean,
   isSelect: boolean,
-  hasHover: boolean
+  hasHover: boolean,
+  editing: boolean
 ): string | undefined {
-  if (panning) {
+  if (panning || editing) {
     return "grabbing";
   }
   if (isSelect) {
@@ -679,6 +874,11 @@ export function PlanView({ store }: PlanViewProps) {
   const [axisLock, setAxisLock] = useState<LockAxis>(null);
   /** Active middle-drag pan, tracked in a ref so pointer-move doesn't re-render per frame. */
   const panRef = useRef<PanState | null>(null);
+  /** An armed/active footprint edit drag (Select tool), tracked in a ref like the pan. */
+  const dragRef = useRef<EditDrag | null>(null);
+  /** The transient edited ring while a Select-tool drag is live (null when not editing) — rendered in
+   *  place of the canonical footprint; only committed on release. */
+  const [editPreview, setEditPreview] = useState<readonly Point[] | null>(null);
 
   const isFootprint = store.activeTool === "footprint";
   const isRectangle = store.activeTool === "rectangle";
@@ -724,6 +924,23 @@ export function PlanView({ store }: PlanViewProps) {
 
   const onPointerMove = (event: PointerEvent<SVGSVGElement>): void => {
     if (continuePan(panRef.current, svgRef.current, event, setCamera)) {
+      return;
+    }
+    // An armed edit drag (Select tool) owns the pointer until release — move the vertex / place the
+    // inserted one, never falling through to hover.
+    const drag = dragRef.current;
+    if (
+      drag &&
+      continueEditDrag(
+        drag,
+        camera,
+        ringWorld,
+        svgRef.current,
+        event,
+        setEditPreview,
+        setSnap
+      )
+    ) {
       return;
     }
     // Select mode: hover-highlight whatever a click would pick (vertex/edge/footprint).
@@ -782,6 +999,57 @@ export function PlanView({ store }: PlanViewProps) {
     }
   };
 
+  /** Finish an active edit gesture on pointer-up: a real drag commits the edited ring; a press that
+   *  never moved was a *click*, so it selects the piece under it (the ADR 0013 behavior). Returns
+   *  whether it consumed the event. */
+  const endDrag = (event: PointerEvent<SVGSVGElement>): boolean => {
+    const drag = dragRef.current;
+    if (!(drag && event.pointerId === drag.pointerId)) {
+      return false;
+    }
+    svgRef.current?.releasePointerCapture(event.pointerId);
+    dragRef.current = null;
+    if (drag.moved && drag.preview) {
+      store.editFootprint(drag.preview);
+    } else {
+      store.select(
+        drag.kind === "move"
+          ? { kind: "vertex", index: drag.index }
+          : { kind: "edge", index: drag.index }
+      );
+    }
+    setEditPreview(null);
+    setSnap(null);
+    return true;
+  };
+
+  /** Abort an active edit gesture (pointer cancel) without committing. */
+  const cancelDrag = (event: PointerEvent<SVGSVGElement>): boolean => {
+    const drag = dragRef.current;
+    if (!(drag && event.pointerId === drag.pointerId)) {
+      return false;
+    }
+    svgRef.current?.releasePointerCapture(event.pointerId);
+    dragRef.current = null;
+    setEditPreview(null);
+    setSnap(null);
+    return true;
+  };
+
+  const onPointerUp = (event: PointerEvent<SVGSVGElement>): void => {
+    if (endDrag(event)) {
+      return;
+    }
+    endPan(event);
+  };
+
+  const onPointerCancel = (event: PointerEvent<SVGSVGElement>): void => {
+    if (cancelDrag(event)) {
+      return;
+    }
+    endPan(event);
+  };
+
   const onPointerDown = (event: PointerEvent<SVGSVGElement>): void => {
     // Middle-button drag pans, in any tool (SketchUp parity) — it never places geometry.
     if (event.button === 1) {
@@ -796,17 +1064,27 @@ export function PlanView({ store }: PlanViewProps) {
     if (event.button !== 0) {
       return; // Only the primary button acts from here.
     }
-    // Select mode: a click picks whatever is under the cursor, or clears on empty space.
+    // Select mode: a press on a vertex/edge *arms* an edit drag — a click (no drag) still selects it,
+    // an actual drag moves the vertex or inserts one on the edge (ADR 0015). A press on the face/empty
+    // space selects (or clears) immediately; there is no whole-footprint drag here (that's P2 #10).
     if (isSelect) {
-      store.select(
-        pickAt(
-          camera,
-          svgRef.current,
-          store.footprint,
-          event.clientX,
-          event.clientY
-        )
-      );
+      const armed = armEditDrag(camera, svgRef.current, store.footprint, event);
+      if (armed) {
+        svgRef.current?.setPointerCapture(event.pointerId);
+        dragRef.current = armed;
+      } else {
+        // Face / empty space: select (or clear) immediately — no edit gesture there (whole-footprint
+        // move is P2 #10).
+        store.select(
+          pickAt(
+            camera,
+            svgRef.current,
+            store.footprint,
+            event.clientX,
+            event.clientY
+          )
+        );
+      }
       return;
     }
     if (!isPlanDraw) {
@@ -864,13 +1142,6 @@ export function PlanView({ store }: PlanViewProps) {
     return lines;
   }, [camera]);
 
-  /** The committed footprint ring as an SVG points string, read from the engine's mirror. */
-  const ringPoints = (footprint: FootprintMirror): string =>
-    footprint
-      .vertices()
-      .map((v) => `${sx(v.x)},${sy(v.y)}`)
-      .join(" ");
-
   /** The previous vertex the next segment grows from — the anchor for value entry and the rubber band. */
   const anchor = store.pendingPicks.at(-1) ?? null;
   /** The live segment (anchor → cursor) while drawing: its length (ticks) and bearing (degrees CCW
@@ -911,7 +1182,9 @@ export function PlanView({ store }: PlanViewProps) {
 
   const ringVertices = ringOf(footprint);
   const hoverCue = visibleHover(isSelect, hover, store.selection);
-  const cursor = surfaceCursor(panning, isSelect, hoverCue !== null);
+  /** A Select-tool edit drag is live: render the transient edited ring in place of the canonical one. */
+  const isEditing = editPreview !== null;
+  const cursor = surfaceCursor(panning, isSelect, hoverCue !== null, isEditing);
 
   // Running width×depth: the in-progress picks + cursor while drawing, else the committed ring.
   const extentsPoints: readonly Point[] =
@@ -923,11 +1196,11 @@ export function PlanView({ store }: PlanViewProps) {
       <svg
         aria-label="Plan drawing surface"
         className="plan"
-        onPointerCancel={endPan}
+        onPointerCancel={onPointerCancel}
         onPointerDown={onPointerDown}
         onPointerLeave={onPointerLeave}
         onPointerMove={onPointerMove}
-        onPointerUp={endPan}
+        onPointerUp={onPointerUp}
         ref={svgRef}
         style={cursor ? { cursor } : undefined}
         viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
@@ -977,17 +1250,17 @@ export function PlanView({ store }: PlanViewProps) {
           />
         )}
 
-        {/* The engine's canonical footprint, read from the mirror. */}
-        {hasRing && footprint && (
-          <polygon className="plan__footprint" points={ringPoints(footprint)} />
-        )}
-
-        {/* Persistent dimension labels: each committed edge's length at its midpoint. */}
-        {hasRing && edgeLengthCues(camera, ringVertices)}
-
-        {/* Selection cues: hover under, the committed selection on top. */}
-        {selectionCue(camera, ringVertices, hoverCue, "hover")}
-        {selectionCue(camera, ringVertices, store.selection, "selected")}
+        {/* The canonical footprint + selection cues — or, mid-edit, the transient preview ring. */}
+        <FootprintLayer
+          camera={camera}
+          editPreview={editPreview}
+          footprint={footprint}
+          hasRing={hasRing}
+          hoverCue={hoverCue}
+          ringVertices={ringVertices}
+          selection={store.selection}
+          snap={snap}
+        />
 
         {/* Running overall size (width × depth), pinned to the corner so it never trails the cursor. */}
         {extents && (

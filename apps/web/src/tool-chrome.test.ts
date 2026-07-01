@@ -66,13 +66,19 @@ describe("tool-chrome registry", () => {
       selectedKind: null,
     };
 
-    test("nothing selected: prompts what to click", () => {
-      expect(select?.status(base)).toContain("click a vertex, edge, or");
+    test("nothing selected: prompts to select and edit", () => {
+      expect(select?.status(base)).toContain("drag a vertex to move it");
     });
 
-    test("something selected: names it and how to clear", () => {
+    test("a selected vertex names the move + delete verbs", () => {
+      expect(select?.status({ ...base, selectedKind: "vertex" })).toBe(
+        "Selected a vertex — drag to move, Delete to remove, Esc to clear"
+      );
+    });
+
+    test("a selected edge names the insert verb", () => {
       expect(select?.status({ ...base, selectedKind: "edge" })).toBe(
-        "Selected an edge — Esc to clear"
+        "Selected an edge — drag it to add a vertex, Esc to clear"
       );
     });
   });

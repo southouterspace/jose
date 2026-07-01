@@ -89,7 +89,7 @@ Grounded in the current code (`packages/tool-runner`, `apps/web/src/plan-view.ts
 | **1.5 Faces / topology** | **Built for the one case.** Close ring → footprint face → extrude to mass. General carving needs BREP (deferred). | `session.rs`, ADR 0007 |
 | **1.6 Components / assemblies** | **Missing (domain-latent).** 13 `FramingRole`s and a `MemberPlacement` buffer exist but nothing user-facing; no wall types, no openings, no reusable units. | `render-mirror`, `building::FramingRole` |
 | **1.7 Navigation** | **3D: yes** (OrbitControls). **Plan: yes** — scroll-zoom (to cursor), middle-drag pan, and Fit / Shift+Z Zoom-Extents landed (P0 #2), via a stateful `PlanCamera`. Zoom-Extents in 3D still absent. | `plan-camera.ts`, `plan-view.tsx` |
-| **1.8 Selection / editing** | **Selection: yes** (P0 #3) — a Select tool picks a vertex/edge/footprint with a hover affordance and Esc-to-clear, via a pure screen-space `hitTest`. Editing (vertex drag/insert/delete, post-close footprint edit) still missing — it builds on this. | `plan-selection.ts`, ADR 0013 |
+| **1.8 Selection / editing** | **Selection + editing: yes** (P0 #3, P2 #9) — a Select tool picks a vertex/edge/footprint (hover + Esc), and now *edits* it: drag a vertex to move, drag an edge to insert, Delete to remove (≥3 guarded), committed as an `EditFootprint` that re-extrudes at height. Whole-footprint Move/Copy (P2 #10) still missing. | `plan-selection.ts`, `footprint-edit.ts`, ADR 0013/0015 |
 | **1.9 Chrome / undo** | **Partial.** Toolbar + status bar exist. **No undo/redo. No error/rejected-command state. No hover cues.** | `coverage-gaps.md` |
 
 **Headline:** the *drawing feel* is further along than expected (inference + typed length are
@@ -213,9 +213,11 @@ lands.
    the rectangular 80% case. A `TOOL_CATALOG` row + a chrome row emitting the same closed
    `DrawFootprint` ring; a dashed box rubber-band previews it. This also delivers the typed-rectangle
    VCB piece deferred from #7.
-9. **Footprint editing.** Drag a vertex; insert/delete a vertex; move an edge. Requires selection
-   (#3) and a new edit `Command` (the engine stores the ring in `Session::footprint` — mutate and
-   re-extrude). This is the difference between "sketch once" and "model."
+9. ~~**Footprint editing.**~~ ✅ **Landed.** Drag a vertex to move it, drag an edge to insert one,
+   Delete a selected vertex (≥3 guarded) — all on the Select tool ("a click selects, a drag edits").
+   The mutated ring commits as a new `EditFootprint` command that **re-extrudes at the current mass
+   height** instead of flattening it ([ADR 0015](../adr/0015-footprint-editing-command.md)); undo is
+   free. The difference between "sketch once" and "model." *(Whole-footprint Move/Copy is #10.)*
 10. **Move / Copy (+ linear array).** SketchUp's core edit verb: move a selection; `Ctrl` copies;
     typed `5x` arrays. Highest-leverage single edit tool once selection exists.
 

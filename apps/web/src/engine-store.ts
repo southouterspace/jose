@@ -49,6 +49,10 @@ export interface EngineStore {
   /** Resolve a raw world point into the live preview a click would land on (rubber band, alignment
    *  guides, close target) — read-only; never mutates the in-progress draw. */
   readonly draft: (point: Point, options?: PickOptions) => DraftPoint;
+  /** Commit an edit to the current footprint from its mutated ring (a vertex move / insert / delete
+   *  resolved client-side). The engine re-extrudes at the current mass height (ADR 0015); a Select-tool
+   *  gesture dispatched directly, like `pushPull`. */
+  readonly editFootprint: (vertices: readonly Point[]) => void;
   /** Surface a client-side rejection (e.g. an unparseable value-box entry) through the same toast
    *  path as engine rejections. */
   readonly flagRejection: (message: string) => void;
@@ -168,6 +172,12 @@ export function useEngineStore(): EngineStore {
         xs: command.xs,
         ys: command.ys,
       });
+    } else if (command.kind === "editFootprint") {
+      send(worker, {
+        kind: "editFootprint",
+        xs: command.xs,
+        ys: command.ys,
+      });
     } else if (command.kind === "pushPull") {
       send(worker, {
         kind: "pushPull",
@@ -209,6 +219,22 @@ export function useEngineStore(): EngineStore {
       }
     },
     [dispatch, runner]
+  );
+
+  const editFootprint = useCallback(
+    (vertices: readonly Point[]): void => {
+      // Guard the degenerate case the client can see up front — a ring needs ≥3 vertices — so a
+      // doomed delete never round-trips (the engine would reject it anyway).
+      if (vertices.length < 3) {
+        return;
+      }
+      dispatch({
+        kind: "editFootprint",
+        xs: vertices.map((p) => p.x),
+        ys: vertices.map((p) => p.y),
+      });
+    },
+    [dispatch]
   );
 
   const pushPull = useCallback(
@@ -274,6 +300,7 @@ export function useEngineStore(): EngineStore {
     clearSelection,
     dismissRejection,
     draft,
+    editFootprint,
     flagRejection,
     footprint,
     pendingPicks,

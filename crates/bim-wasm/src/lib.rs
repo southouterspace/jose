@@ -13,7 +13,9 @@
 //! All domain logic lives in [`bim_core`] and the context crates; this crate is a thin marshaling
 //! shell — the only crate in the workspace that contains FFI `unsafe` (via the wasm-bindgen macro).
 
-use bim_core::{Command, CommandOutcome, DrawFootprint, DrawWall, PushPull, Session};
+use bim_core::{
+    Command, CommandOutcome, DrawFootprint, DrawWall, EditFootprint, PushPull, Session,
+};
 use wasm_bindgen::prelude::*;
 
 /// The engine handle exposed to JavaScript. Wraps the canonical [`Session`]; its methods are the
@@ -76,6 +78,20 @@ impl Engine {
         outcome_code(
             self.session
                 .apply(Command::DrawFootprint(DrawFootprint { vertices })),
+        )
+    }
+
+    /// Channel A: edit the current space's footprint from a closed ring of world-XY vertices in ticks
+    /// — the mutated ring after a vertex move / insert / delete. Same ABI as [`Engine::draw_footprint`]
+    /// (`xs`/`ys` parallel columns, the closing edge implicit), but the intent is an **edit**: the ring
+    /// is re-extruded at the current mass height instead of flattening it (ADR 0015). Returns the empty
+    /// string when accepted, or a stable rejection code when the edit is degenerate (state unchanged).
+    #[wasm_bindgen(js_name = editFootprint)]
+    pub fn edit_footprint(&mut self, xs: &[i32], ys: &[i32]) -> String {
+        let vertices = xs.iter().zip(ys.iter()).map(|(&x, &y)| (x, y)).collect();
+        outcome_code(
+            self.session
+                .apply(Command::EditFootprint(EditFootprint { vertices })),
         )
     }
 
@@ -221,6 +237,33 @@ mod tests {
         assert_eq!(engine.push_pull(1, 0, ft), "not_top_face");
         assert_eq!(engine.push_pull(1, 1, ft), "");
         assert_eq!(engine.volume_count(), 1);
+    }
+
+    #[test]
+    fn edit_footprint_reshapes_and_reports_rejection_codes() {
+        let ft = 384;
+        let mut engine = Engine::new();
+
+        // An edit with nothing drawn is refused.
+        assert_eq!(
+            engine.edit_footprint(&[0, ft, ft], &[0, 0, ft]),
+            "no_target"
+        );
+
+        // Draw a square, push it into a mass, then edit the ring — the mass survives (still 1 volume).
+        engine.draw_footprint(&[0, ft, ft, 0], &[0, 0, ft, ft]);
+        assert_eq!(engine.push_pull(1, 1, 3 * ft), "");
+        assert_eq!(engine.volume_count(), 1);
+        assert_eq!(
+            engine.edit_footprint(&[0, 2 * ft, ft, 0], &[0, 0, ft, ft]),
+            ""
+        );
+        assert_eq!(engine.footprint_count(), 4);
+        assert_eq!(engine.volume_count(), 1);
+
+        // A degenerate edit (down to two vertices) is refused with its code; state stays.
+        assert_eq!(engine.edit_footprint(&[0, ft], &[0, 0]), "too_few_vertices");
+        assert_eq!(engine.footprint_count(), 4);
     }
 
     #[test]
