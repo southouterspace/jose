@@ -12,7 +12,9 @@ import {
 } from "@jose/render-mirror";
 import {
   type Command,
+  type DraftPoint,
   type PickOptions,
+  type Point,
   TOOL_CATALOG,
   ToolRunner,
 } from "@jose/tool-runner";
@@ -25,6 +27,11 @@ export interface EngineStore {
   readonly activate: (toolKey: string) => void;
   /** The active drawing tool's catalog key (e.g. `footprint`). */
   readonly activeTool: string;
+  /** Abort the in-progress draw, keeping the active tool (Escape / value-entry bail-out). */
+  readonly cancelDraw: () => void;
+  /** Resolve a raw world point into the live preview a click would land on (rubber band, alignment
+   *  guides, close target) — read-only; never mutates the in-progress draw. */
+  readonly draft: (point: Point, options?: PickOptions) => DraftPoint;
   /** The latest canonical footprint, as a read-only mirror — `null` until the first draw returns. */
   readonly footprint: FootprintMirror | null;
   /** The mid-draw picks for the active tool (transient UI; never canonical geometry). */
@@ -163,9 +170,24 @@ export function useEngineStore(): EngineStore {
     [dispatch]
   );
 
+  // Pure preview: reads the runner's in-progress picks without mutating them, so calling it during
+  // render (for the live cursor) is safe.
+  const draft = useCallback(
+    (point: { x: number; y: number }, options?: PickOptions): DraftPoint =>
+      runner.draft(point, options),
+    [runner]
+  );
+
+  const cancelDraw = useCallback((): void => {
+    runner.cancel();
+    setPendingPicks([]);
+  }, [runner]);
+
   return {
     activeTool,
     activate,
+    cancelDraw,
+    draft,
     pick,
     pushPull,
     pendingPicks,

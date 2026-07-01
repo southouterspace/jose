@@ -68,9 +68,13 @@ function statusText(store: ReturnType<typeof useEngineStore>): string {
       : `Footprint: ${store.footprint.count} vertices · mass ${ft}ft tall`;
   }
   if (store.pendingPicks.length > 0) {
-    return `Drawing footprint — ${store.pendingPicks.length} point(s); click the first to close`;
+    const closeHint =
+      store.pendingPicks.length >= 3
+        ? "click the first vertex to close"
+        : "keep placing vertices";
+    return `Drawing footprint — ${store.pendingPicks.length} point(s); ${closeHint}, type a length to set the next edge, or Esc to cancel`;
   }
-  return "Ready — Footprint tool active; click to place vertices";
+  return "Ready — Footprint tool active; click to place vertices (hold Shift to lock to an axis)";
 }
 
 /** The current mass height in feet (1ft = 384 ticks), to one decimal — for the status bar. */
