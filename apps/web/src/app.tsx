@@ -36,6 +36,47 @@ function historyChord(event: KeyboardEvent): "redo" | "undo" | null {
   return null;
 }
 
+/** The tool key a bare single-key press activates given the live state, or `null` — no modifiers, and
+ *  the tool must be enabled. Keeps the key handler's branching (and complexity) low. */
+function shortcutToolKey(
+  event: KeyboardEvent,
+  state: ChromeState
+): string | null {
+  if (event.metaKey || event.ctrlKey || event.altKey) {
+    return null;
+  }
+  const tool = TOOL_CHROME.find(
+    (candidate) => candidate.shortcut === event.key.toLowerCase()
+  );
+  return tool?.enabled(state) ? tool.key : null;
+}
+
+/** The single action a keydown triggers. */
+type KeyAction =
+  | { readonly type: "clear" | "redo" | "undo" }
+  | { readonly type: "activate"; readonly key: string };
+
+/** Classify a keydown into the one action it triggers (or `null`). Pure, so the listener stays a thin
+ *  dispatch: chords first, then Escape-clears, then a single-key tool shortcut. */
+function keyAction(
+  event: KeyboardEvent,
+  typing: boolean,
+  state: ChromeState
+): KeyAction | null {
+  const chord = historyChord(event);
+  if (chord) {
+    return typing ? null : { type: chord };
+  }
+  if (event.key === "Escape") {
+    return typing ? null : { type: "clear" };
+  }
+  if (typing) {
+    return null;
+  }
+  const key = shortcutToolKey(event, state);
+  return key ? { type: "activate", key } : null;
+}
+
 export function App() {
   const store = useEngineStore();
   const chromeState: ChromeState = {
@@ -46,39 +87,40 @@ export function App() {
       store.volume && store.volume.count >= 1
         ? store.volume.row(0).height / 384
         : null,
+    selectedKind: store.selection?.kind ?? null,
   };
 
   // Keep the latest chrome state in a ref so the (once-mounted) key listener reads it without
   // re-subscribing every render. `activate`/`undo`/`redo` are stable (useCallback in the store).
   const stateRef = useRef(chromeState);
   stateRef.current = chromeState;
-  const { activate, undo, redo, dismissRejection } = store;
+  const { activate, undo, redo, dismissRejection, clearSelection } = store;
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       const typing = isTypingTarget(event.target as HTMLElement | null);
-      // Undo/redo chords win first; skipped while typing so they don't fight text-field undo.
-      const chord = historyChord(event);
-      if (chord) {
-        if (!typing) {
+      const action = keyAction(event, typing, stateRef.current);
+      if (!action) {
+        return;
+      }
+      switch (action.type) {
+        case "undo":
           event.preventDefault();
-          (chord === "redo" ? redo : undo)();
-        }
-        return;
-      }
-      // Single-key tool shortcuts: no modifiers, and not while typing a value.
-      if (event.metaKey || event.ctrlKey || event.altKey || typing) {
-        return;
-      }
-      const tool = TOOL_CHROME.find(
-        (candidate) => candidate.shortcut === event.key.toLowerCase()
-      );
-      if (tool?.enabled(stateRef.current)) {
-        activate(tool.key);
+          undo();
+          break;
+        case "redo":
+          event.preventDefault();
+          redo();
+          break;
+        case "clear":
+          clearSelection();
+          break;
+        default:
+          activate(action.key);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [activate, undo, redo]);
+  }, [activate, undo, redo, clearSelection]);
 
   // Auto-dismiss the rejection toast a few seconds after it appears; re-armed per rejection via the
   // nonce (an identical repeat still resets the timer). Manual dismiss + successful commands also

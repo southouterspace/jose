@@ -15,12 +15,23 @@
  * The view is navigable (P0 #2): scroll zooms toward the cursor, middle-drag pans, and Fit / Shift+Z
  * runs Zoom-Extents. All of it flows through one `PlanCamera` (`plan-camera.ts`) held in state — the
  * pure world↔screen transform every coordinate below is derived from.
+ *
+ * With the Select tool active (P0 #3, ADR 0013) a click picks the ring piece under the cursor — a
+ * vertex, an edge, or the whole footprint — via the pure screen-space `hitTest`; the cursor's hover
+ * target is previewed, and the committed selection (store state) is highlighted on top.
  */
 
 import type { FootprintMirror } from "@jose/render-mirror";
 import type { DraftPoint } from "@jose/tool-runner";
 import { formatLength, parseLength, pointAtDistance } from "@jose/tool-runner";
-import { type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type PointerEvent,
+  type ReactElement,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { EngineStore } from "./engine-store";
 import {
   boundsOf,
@@ -36,6 +47,12 @@ import {
   VIEW_W,
   zoomAt,
 } from "./plan-camera";
+import {
+  hitTest,
+  type RingVertex,
+  type Selection,
+  sameSelection,
+} from "./plan-selection";
 import { ValueBox } from "./value-box";
 
 /** Grid line spacing in world ticks (384 = 1ft). */
@@ -44,6 +61,120 @@ const GRID_TICKS = 384;
 const GRID_HALF_TICKS = 7680;
 /** Per-notch wheel zoom factor (in on scroll-up, out on scroll-down). */
 const ZOOM_STEP = 1.1;
+
+/** A highlight over a selected/hovered ring piece — a vertex dot, an edge line, or the whole face. */
+function selectionCue(
+  camera: PlanCamera,
+  ringVertices: readonly RingVertex[],
+  sel: Selection | null,
+  variant: "hover" | "selected"
+): ReactElement | null {
+  if (!sel || ringVertices.length === 0) {
+    return null;
+  }
+  const cls = variant === "selected" ? "plan__sel" : "plan__hover";
+  const px = (v: RingVertex): number => toScreenX(camera, v.x);
+  const py = (v: RingVertex): number => toScreenY(camera, v.y);
+  if (sel.kind === "vertex") {
+    const v = ringVertices[sel.index];
+    return v ? (
+      <circle
+        className={`${cls} ${cls}--vertex`}
+        cx={px(v)}
+        cy={py(v)}
+        r={variant === "selected" ? 7 : 6}
+      />
+    ) : null;
+  }
+  if (sel.kind === "edge") {
+    const a = ringVertices[sel.index];
+    const b = ringVertices[(sel.index + 1) % ringVertices.length];
+    return a && b ? (
+      <line
+        className={`${cls} ${cls}--edge`}
+        x1={px(a)}
+        x2={px(b)}
+        y1={py(a)}
+        y2={py(b)}
+      />
+    ) : null;
+  }
+  return (
+    <polygon
+      className={`${cls} ${cls}--face`}
+      points={ringVertices.map((v) => `${px(v)},${py(v)}`).join(" ")}
+    />
+  );
+}
+
+/** A client pointer position in the fixed viewBox pixel space (independent of the element's size). */
+function viewBoxOf(
+  svg: SVGSVGElement | null,
+  clientX: number,
+  clientY: number
+): { px: number; py: number } | null {
+  if (!svg) {
+    return null;
+  }
+  const rect = svg.getBoundingClientRect();
+  return {
+    px: ((clientX - rect.left) / rect.width) * VIEW_W,
+    py: ((clientY - rect.top) / rect.height) * VIEW_H,
+  };
+}
+
+/** The world point (ticks) under a client pointer position, via the current camera. */
+function worldOf(
+  camera: PlanCamera,
+  svg: SVGSVGElement | null,
+  clientX: number,
+  clientY: number
+): { x: number; y: number } | null {
+  const vb = viewBoxOf(svg, clientX, clientY);
+  return vb ? { x: toWorldX(camera, vb.px), y: toWorldY(camera, vb.py) } : null;
+}
+
+/** The ring piece a client pointer position would select (select tool), or `null`. */
+function pickAt(
+  camera: PlanCamera,
+  svg: SVGSVGElement | null,
+  footprint: FootprintMirror | null,
+  clientX: number,
+  clientY: number
+): Selection | null {
+  const vb = viewBoxOf(svg, clientX, clientY);
+  return vb ? hitTest(camera, footprint?.vertices() ?? [], vb) : null;
+}
+
+/** The committed ring's vertices for drawing cues, or empty until a closed footprint exists. */
+function ringOf(footprint: FootprintMirror | null): readonly RingVertex[] {
+  return footprint && footprint.count >= 3 ? footprint.vertices() : [];
+}
+
+/** The hover cue to paint: only in select mode, and only when it isn't just echoing the selection. */
+function visibleHover(
+  isSelect: boolean,
+  hover: Selection | null,
+  selection: Selection | null
+): Selection | null {
+  return isSelect && !sameSelection(hover, selection) ? hover : null;
+}
+
+/** The cursor for the plan surface: grabbing while panning, an arrow/pointer in select mode, else the
+ *  CSS crosshair (`undefined` defers to the stylesheet). */
+function surfaceCursor(
+  panning: boolean,
+  isSelect: boolean,
+  hasHover: boolean
+): string | undefined {
+  if (panning) {
+    return "grabbing";
+  }
+  if (isSelect) {
+    return hasHover ? "pointer" : "default";
+  }
+  return;
+}
 
 export interface PlanViewProps {
   readonly store: EngineStore;
@@ -56,6 +187,8 @@ export function PlanView({ store }: PlanViewProps) {
   const [lengthInput, setLengthInput] = useState("");
   const [camera, setCamera] = useState<PlanCamera>(DEFAULT_CAMERA);
   const [panning, setPanning] = useState(false);
+  /** What a click would select right now (select tool only) — ephemeral, view-local hover cue. */
+  const [hover, setHover] = useState<Selection | null>(null);
   /** Active middle-drag pan, tracked in a ref so pointer-move doesn't re-render per frame. */
   const panRef = useRef<{
     pointerId: number;
@@ -64,37 +197,11 @@ export function PlanView({ store }: PlanViewProps) {
   } | null>(null);
 
   const isFootprint = store.activeTool === "footprint";
+  const isSelect = store.activeTool === "select";
 
   /** Local screen↔world binds over the current camera, so the JSX below reads plainly. */
   const sx = (xTicks: number): number => toScreenX(camera, xTicks);
   const sy = (yTicks: number): number => toScreenY(camera, yTicks);
-
-  /** A pointer's position in the fixed viewBox pixel space (independent of the element's size). */
-  const viewBoxPoint = (
-    clientX: number,
-    clientY: number
-  ): { px: number; py: number } | null => {
-    const svg = svgRef.current;
-    if (!svg) {
-      return null;
-    }
-    const rect = svg.getBoundingClientRect();
-    return {
-      px: ((clientX - rect.left) / rect.width) * VIEW_W,
-      py: ((clientY - rect.top) / rect.height) * VIEW_H,
-    };
-  };
-
-  /** World point (ticks) under a pointer event, via the current camera. */
-  const worldFromEvent = (
-    event: PointerEvent<SVGSVGElement>
-  ): { x: number; y: number } | null => {
-    const vb = viewBoxPoint(event.clientX, event.clientY);
-    if (!vb) {
-      return null;
-    }
-    return { x: toWorldX(camera, vb.px), y: toWorldY(camera, vb.py) };
-  };
 
   /** Zoom-Extents: frame the committed footprint and any in-progress picks (Shift+Z / the Fit button). */
   const fitToContent = (): void => {
@@ -155,7 +262,7 @@ export function PlanView({ store }: PlanViewProps) {
   const onPointerMove = (event: PointerEvent<SVGSVGElement>): void => {
     const pan = panRef.current;
     if (pan && event.pointerId === pan.pointerId) {
-      const vb = viewBoxPoint(event.clientX, event.clientY);
+      const vb = viewBoxOf(svgRef.current, event.clientX, event.clientY);
       if (!vb) {
         return;
       }
@@ -164,10 +271,22 @@ export function PlanView({ store }: PlanViewProps) {
       pan.lastPy = vb.py;
       return;
     }
+    // Select mode: hover-highlight whatever a click would pick (vertex/edge/footprint).
+    if (isSelect) {
+      const next = pickAt(
+        camera,
+        svgRef.current,
+        store.footprint,
+        event.clientX,
+        event.clientY
+      );
+      setHover((prev) => (sameSelection(prev, next) ? prev : next));
+      return;
+    }
     if (!isFootprint) {
       return;
     }
-    const world = worldFromEvent(event);
+    const world = worldOf(camera, svgRef.current, event.clientX, event.clientY);
     if (!world) {
       return;
     }
@@ -177,6 +296,7 @@ export function PlanView({ store }: PlanViewProps) {
 
   const onPointerLeave = (): void => {
     setHovering(false);
+    setHover(null);
   };
 
   const endPan = (event: PointerEvent<SVGSVGElement>): void => {
@@ -192,7 +312,7 @@ export function PlanView({ store }: PlanViewProps) {
     // Middle-button drag pans, in any tool (SketchUp parity) — it never places geometry.
     if (event.button === 1) {
       event.preventDefault();
-      const vb = viewBoxPoint(event.clientX, event.clientY);
+      const vb = viewBoxOf(svgRef.current, event.clientX, event.clientY);
       if (!vb) {
         return;
       }
@@ -205,11 +325,26 @@ export function PlanView({ store }: PlanViewProps) {
       setPanning(true);
       return;
     }
-    // Only a primary click on the footprint tool places a vertex.
-    if (event.button !== 0 || !isFootprint) {
+    if (event.button !== 0) {
+      return; // Only the primary button acts from here.
+    }
+    // Select mode: a click picks whatever is under the cursor, or clears on empty space.
+    if (isSelect) {
+      store.select(
+        pickAt(
+          camera,
+          svgRef.current,
+          store.footprint,
+          event.clientX,
+          event.clientY
+        )
+      );
       return;
     }
-    const world = worldFromEvent(event);
+    if (!isFootprint) {
+      return;
+    }
+    const world = worldOf(camera, svgRef.current, event.clientX, event.clientY);
     if (!world) {
       return;
     }
@@ -285,6 +420,10 @@ export function PlanView({ store }: PlanViewProps) {
   // The value box is live only once a segment has somewhere to grow from (≥1 vertex down).
   const canEnterLength = isFootprint && anchor !== null;
 
+  const ringVertices = ringOf(footprint);
+  const hoverCue = visibleHover(isSelect, hover, store.selection);
+  const cursor = surfaceCursor(panning, isSelect, hoverCue !== null);
+
   return (
     <div className="plan__wrap">
       <svg
@@ -296,7 +435,7 @@ export function PlanView({ store }: PlanViewProps) {
         onPointerMove={onPointerMove}
         onPointerUp={endPan}
         ref={svgRef}
-        style={panning ? { cursor: "grabbing" } : undefined}
+        style={cursor ? { cursor } : undefined}
         viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
       >
         <title>Plan drawing surface</title>
@@ -405,6 +544,10 @@ export function PlanView({ store }: PlanViewProps) {
         {hasRing && footprint && (
           <polygon className="plan__footprint" points={ringPoints(footprint)} />
         )}
+
+        {/* Selection cues: hover under, the committed selection on top. */}
+        {selectionCue(camera, ringVertices, hoverCue, "hover")}
+        {selectionCue(camera, ringVertices, store.selection, "selected")}
       </svg>
 
       {/* Plan navigation: scroll zooms, middle-drag pans, this fits the drawing to the view. */}

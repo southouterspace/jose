@@ -19,6 +19,7 @@ import {
   ToolRunner,
 } from "@jose/tool-runner";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { Selection } from "./plan-selection";
 import type { EngineRequest, EngineResponse } from "./protocol";
 import { rejectionMessage } from "./rejection";
 
@@ -41,6 +42,8 @@ export interface EngineStore {
   readonly canRedo: boolean;
   /** Whether a prior state is available to return to (drives Undo enablement). */
   readonly canUndo: boolean;
+  /** Clear the current selection (Escape / an empty click). */
+  readonly clearSelection: () => void;
   /** Clear the current rejection (dismiss the toast). */
   readonly dismissRejection: () => void;
   /** Resolve a raw world point into the live preview a click would land on (rubber band, alignment
@@ -71,6 +74,11 @@ export interface EngineStore {
   readonly redo: () => void;
   /** The latest rejection to surface, or `null` when there is nothing to show. */
   readonly rejection: Rejection | null;
+  /** Set (or replace) the current selection; pass `null` to clear. */
+  readonly select: (selection: Selection | null) => void;
+  /** The current plan selection (a ring vertex/edge/footprint), or `null` — presentation state only
+   *  (ADR 0013); the engine holds no selection. */
+  readonly selection: Selection | null;
   /** Step back to the previous space state (undo). */
   readonly undo: () => void;
   /** The latest canonical volume (mass), as a read-only mirror — `null` until the first draw. */
@@ -100,6 +108,7 @@ export function useEngineStore(): EngineStore {
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [rejection, setRejection] = useState<Rejection | null>(null);
+  const [selection, setSelection] = useState<Selection | null>(null);
   // Monotonic nonce so two identical consecutive rejections still re-trigger the toast + announce.
   const rejectionNonce = useRef(0);
 
@@ -128,6 +137,8 @@ export function useEngineStore(): EngineStore {
         setCanRedo(response.canRedo);
         // A successful command clears any lingering rejection — the error is resolved.
         setRejection(null);
+        // Geometry changed: a selection keyed by ring index could now dangle, so drop it (ADR 0013 §4).
+        setSelection(null);
         return;
       }
       if (response.kind === "rejected") {
@@ -246,12 +257,21 @@ export function useEngineStore(): EngineStore {
     setRejection({ message, nonce: rejectionNonce.current });
   }, []);
 
+  const select = useCallback((next: Selection | null): void => {
+    setSelection(next);
+  }, []);
+
+  const clearSelection = useCallback((): void => {
+    setSelection(null);
+  }, []);
+
   return {
     activeTool,
     activate,
     canRedo,
     canUndo,
     cancelDraw,
+    clearSelection,
     dismissRejection,
     draft,
     flagRejection,
@@ -262,6 +282,8 @@ export function useEngineStore(): EngineStore {
     ready,
     redo,
     rejection,
+    select,
+    selection,
     undo,
     volume,
   };

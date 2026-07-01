@@ -194,6 +194,54 @@ body {
   stroke-width: 2;
 }
 
+/* Selection cues (committed pick) — a warm highlight over the canonical ring. */
+.plan__sel {
+  pointer-events: none;
+  fill: none;
+  stroke: #ffb454;
+}
+
+.plan__sel--vertex {
+  fill: #ffb454;
+  stroke: #1b1b1f;
+  stroke-width: 1.5;
+}
+
+.plan__sel--edge {
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.plan__sel--face {
+  fill: rgb(255 180 84 / 16%);
+  stroke-width: 2.5;
+}
+
+/* Hover cues (what a click would pick) — the same warm hue, quieter. */
+.plan__hover {
+  pointer-events: none;
+  fill: none;
+  stroke: rgb(255 180 84 / 65%);
+}
+
+.plan__hover--vertex {
+  fill: rgb(255 180 84 / 45%);
+  stroke: rgb(255 180 84 / 80%);
+  stroke-width: 1.5;
+}
+
+.plan__hover--edge {
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 4 3;
+}
+
+.plan__hover--face {
+  fill: rgb(255 180 84 / 8%);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+
 /* Shared measurement value box (SketchUp's VCB), docked bottom-right of whichever surface hosts it
    — the 3D view for height entry today; the plan's own box migrates onto it next (ADR 0012 §4). */
 .value-box {

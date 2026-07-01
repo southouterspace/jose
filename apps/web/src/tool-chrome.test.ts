@@ -38,6 +38,7 @@ describe("tool-chrome registry", () => {
       footprintVertices: 0,
       pendingPicks: 0,
       heightFeet: null,
+      selectedKind: null,
     };
 
     test("push/pull is disabled without a mass, enabled with one", () => {
@@ -49,6 +50,31 @@ describe("tool-chrome registry", () => {
     test("footprint is always available", () => {
       expect(toolChrome("footprint")?.enabled(base)).toBe(true);
     });
+
+    test("select is always available", () => {
+      expect(toolChrome("select")?.enabled(base)).toBe(true);
+    });
+  });
+
+  describe("select status copy", () => {
+    const select = toolChrome("select");
+    const base = {
+      hasMass: false,
+      footprintVertices: 0,
+      pendingPicks: 0,
+      heightFeet: null,
+      selectedKind: null,
+    };
+
+    test("nothing selected: prompts what to click", () => {
+      expect(select?.status(base)).toContain("click a vertex, edge, or");
+    });
+
+    test("something selected: names it and how to clear", () => {
+      expect(select?.status({ ...base, selectedKind: "edge" })).toBe(
+        "Selected an edge — Esc to clear"
+      );
+    });
   });
 
   describe("footprint status copy", () => {
@@ -58,6 +84,7 @@ describe("tool-chrome registry", () => {
       footprintVertices: 0,
       pendingPicks: 0,
       heightFeet: null,
+      selectedKind: null,
     };
 
     test("idle: prompts to place vertices", () => {
