@@ -129,6 +129,9 @@ Treat the HUD as **one shared concern**, not per-tool text nodes:
 
 ### 2b.2 A tool-chrome framework — adding a tool should be declarative
 
+> Drafted as [ADR 0012](../adr/0012-tool-chrome-framework.md).
+
+
 `tool-runner` already has the right backbone: `TOOL_CATALOG` is a data-driven registry, and adding a
 tool is "a row + a `commit()` case" engine-side. The **front-end chrome around it is not yet a
 framework** — the toolbar, status copy, cursor, value box, and canvas overlays are hand-wired for
