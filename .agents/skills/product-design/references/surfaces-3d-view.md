@@ -30,6 +30,11 @@ keep the top cap visually and structurally identifiable as the interactive face.
 - Active only with the Push/Pull tool **and** an existing mass. A pointer-down that raycasts the top
   cap starts a drag; vertical pointer movement maps (via `pushPullDistance`) to a signed tick delta
   dispatched as `PushPull { volumeId, TOP_FACE, distance }`.
+- **A live distance readout follows the cursor during the drag** (`three__readout`, fed by
+  `hud.ts`'s `pushPullReadout`): the resulting mass height plus the signed distance (`▲`/`▼`), in
+  feet/inches — so the cap isn't dragged blind. This is the first brick of the 3D HUD layer
+  ([ADR 0012](../../../docs/adr/0012-tool-chrome-framework.md)); it is pointer-inert and hidden when
+  not dragging. It is a *readout*, not a typed **input** (see coverage gaps).
 - **Reference the engine's named face, never a guessed normal.** `TOP_FACE` is the kernel's named
   face index (`crates/geometry-kernel/.../brep.rs`); the code confirms the world normal is vertical
   as a sanity check, but the source of truth is the named face (ADR 0008 §3). Don't pick by

@@ -39,6 +39,7 @@ import {
 } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { EngineStore } from "./engine-store";
+import { pushPullReadout } from "./hud";
 import { frameMass, TICKS_PER_UNIT } from "./mass-tessellation";
 
 /** The kernel's top cap face index (`crates/geometry-kernel/src/brep.rs` `TOP_FACE`). The 3D view
@@ -61,6 +62,8 @@ interface SceneHandle {
    *  the view; a *height-only* (push/pull) change must not yank the camera (the user may be mid-
    *  orbit). `null` until the first frame is set. */
   footprintSig: string | null;
+  /** Height (ticks) of the current mass — the push/pull drag reads this as its starting height. */
+  heightTicks: number;
   /** The current mass group (base + top + sides), or null before the first volume. */
   massGroup: Group | null;
   readonly renderer: WebGLRenderer;
@@ -171,6 +174,7 @@ function rebuildMass(
   const heightTicks = vol ? vol.height : 0;
   const heightUnits = heightTicks / TICKS_PER_UNIT;
   handle.volumeId = vol ? vol.volumeId : VOLUME_ID;
+  handle.heightTicks = heightTicks;
 
   const group = new Group();
 
@@ -247,6 +251,7 @@ export interface ThreeViewProps {
 
 export function ThreeView({ store }: ThreeViewProps) {
   const mountRef = useRef<HTMLDivElement>(null);
+  const readoutRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<SceneHandle | null>(null);
   // The active tool gates the drag; keep a ref so pointer handlers read the live value.
   const toolRef = useRef(store.activeTool);
@@ -300,6 +305,7 @@ export function ThreeView({ store }: ThreeViewProps) {
       massGroup: null,
       topMesh: null,
       volumeId: 0,
+      heightTicks: 0,
       footprintSig: null,
     };
     handleRef.current = handle;
@@ -325,14 +331,28 @@ export function ThreeView({ store }: ThreeViewProps) {
     // --- Push/pull drag state (imperative; never React per-frame state) ---
     const raycaster = new Raycaster();
     const pointer = new Vector2();
+    const readout = readoutRef.current;
     let dragging = false;
     let dragStartY = 0;
     let dragVolumeId = 0;
+    let dragStartHeight = 0;
 
     const setPointer = (event: PointerEvent): void => {
       const rect = renderer.domElement.getBoundingClientRect();
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    };
+
+    // Position the distance readout just off the cursor and fill it with the live push/pull text.
+    const showReadout = (event: PointerEvent, distance: number): void => {
+      if (!readout) {
+        return;
+      }
+      const rect = renderer.domElement.getBoundingClientRect();
+      readout.style.left = `${event.clientX - rect.left + 16}px`;
+      readout.style.top = `${event.clientY - rect.top + 12}px`;
+      readout.textContent = pushPullReadout(dragStartHeight, distance);
+      readout.hidden = false;
     };
 
     const onPointerDown = (event: PointerEvent): void => {
@@ -353,9 +373,23 @@ export function ThreeView({ store }: ThreeViewProps) {
       dragging = true;
       dragStartY = event.clientY;
       dragVolumeId = handle.volumeId;
+      dragStartHeight = handle.heightTicks;
       controls.enabled = false; // freeze orbit while pushing/pulling
       renderer.domElement.setPointerCapture(event.pointerId);
+      showReadout(event, 0); // 0-distance: names the current height until the drag moves
       event.preventDefault();
+    };
+
+    // Live feedback: while dragging, surface the push/pull distance so the cap isn't dragged blind.
+    const onPointerMove = (event: PointerEvent): void => {
+      if (!dragging) {
+        return;
+      }
+      const distance = pushPullDistance(
+        event.clientY - dragStartY,
+        PUSHPULL_TICKS_PER_PIXEL
+      );
+      showReadout(event, distance);
     };
 
     const onPointerUp = (event: PointerEvent): void => {
@@ -368,17 +402,22 @@ export function ThreeView({ store }: ThreeViewProps) {
       );
       dragging = false;
       controls.enabled = true;
+      if (readout) {
+        readout.hidden = true;
+      }
       renderer.domElement.releasePointerCapture(event.pointerId);
       pushPullRef.current(dragVolumeId, TOP_FACE, distance);
     };
 
     renderer.domElement.addEventListener("pointerdown", onPointerDown);
+    renderer.domElement.addEventListener("pointermove", onPointerMove);
     renderer.domElement.addEventListener("pointerup", onPointerUp);
 
     return () => {
       cancelAnimationFrame(raf);
       observer.disconnect();
       renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+      renderer.domElement.removeEventListener("pointermove", onPointerMove);
       renderer.domElement.removeEventListener("pointerup", onPointerUp);
       disposeMass(handle);
       controls.dispose();
@@ -399,5 +438,16 @@ export function ThreeView({ store }: ThreeViewProps) {
     rebuildMass(handle, store.footprint, store.volume);
   }, [store.footprint, store.volume]);
 
-  return <div className="three" ref={mountRef} />;
+  return (
+    <div className="three" ref={mountRef}>
+      {/* The 3D HUD layer (ADR 0012): a cursor-following push/pull distance readout. Pointer-inert
+          so it never fights the drag; positioned imperatively from the pointer handlers. */}
+      <div
+        aria-hidden="true"
+        className="three__readout"
+        hidden
+        ref={readoutRef}
+      />
+    </div>
+  );
 }
