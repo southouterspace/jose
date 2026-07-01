@@ -9,7 +9,7 @@
 use crate::buffer::{
     FootprintBuffer, FootprintRow, MemberBuffer, MemberRow, NOMINAL_WIDTH, VolumeBuffer, VolumeRow,
 };
-use crate::command::{Command, DrawFootprint, DrawWall, PushPull};
+use crate::command::{Command, CommandOutcome, DrawFootprint, DrawWall, PushPull, RejectReason};
 use building::{
     AssemblyKind, FramingSolver, MemberPlacement, RuleSet, SpacingAnchor, SpacingKey,
     SpacingModule, Wall, WallRole, frame_walls,
@@ -28,6 +28,21 @@ const WALL_THICKNESS: i32 = 112;
 const SPACE_ID: u32 = 1;
 const VOLUME_ID: u32 = 1;
 
+/// How many space states the undo history keeps. Deep enough for a real drawing session; bounded so
+/// a long-running session can't grow the history without limit. Oldest states drop off the back.
+const HISTORY_LIMIT: usize = 100;
+
+/// A restorable snapshot of the **space model** — the minimal canonical state the undoable commands
+/// (`DrawFootprint`, `PushPull`) mutate. The SoA buffers are *derived* from this via
+/// [`Session::rewrite_space_buffers`], so history stores the inputs, not the large fixed-capacity
+/// buffer blocks. (The `DrawWall` path is legacy and outside the space-first flow, so it does not
+/// participate in history.)
+#[derive(Clone, Debug)]
+struct SpaceSnapshot {
+    footprint: Vec<(i32, i32)>,
+    volume: Option<Volume>,
+}
+
 /// The canonical in-session model. Owns the recompute state (the framer's id counter) and the SoA
 /// buffer; a `Command` in, a rewritten buffer out.
 #[derive(Clone, Debug)]
@@ -41,6 +56,12 @@ pub struct Session {
     footprint: Vec<(i32, i32)>,
     /// The current extruded mass; `None` until a footprint is drawn.
     volume: Option<Volume>,
+    /// Space states to restore on undo, oldest first; the last is the state before the most recent
+    /// accepted command. Capped at [`HISTORY_LIMIT`].
+    undo_stack: Vec<SpaceSnapshot>,
+    /// States undone and available to redo, in reverse order (the last is the next redo). Cleared
+    /// whenever a fresh command is accepted — the classic linear-history rule.
+    redo_stack: Vec<SpaceSnapshot>,
 }
 
 impl Default for Session {
@@ -60,6 +81,8 @@ impl Session {
             volume_buffer: VolumeBuffer::new(),
             footprint: Vec::new(),
             volume: None,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
         }
     }
 
@@ -93,13 +116,78 @@ impl Session {
         self.volume_buffer.len()
     }
 
-    /// Apply one command and recompute, returning the new live member count.
-    pub fn apply(&mut self, command: Command) -> usize {
+    /// Apply one command and recompute. An accepted command carries the new live member count; a
+    /// refused one carries a [`RejectReason`] and leaves canonical state (and the undo history)
+    /// untouched, so the boundary can surface *why* nothing happened.
+    pub fn apply(&mut self, command: Command) -> CommandOutcome {
         match command {
-            Command::DrawWall(draw) => self.draw_wall(draw),
+            Command::DrawWall(draw) => CommandOutcome::Accepted {
+                member_count: self.draw_wall(draw),
+            },
             Command::DrawFootprint(draw) => self.draw_footprint(draw),
             Command::PushPull(op) => self.push_pull(op),
         }
+    }
+
+    /// Whether there is a prior space state to return to.
+    pub fn can_undo(&self) -> bool {
+        !self.undo_stack.is_empty()
+    }
+
+    /// Whether an undone space state is available to reinstate.
+    pub fn can_redo(&self) -> bool {
+        !self.redo_stack.is_empty()
+    }
+
+    /// Step back to the previous space state, moving the current one onto the redo stack. Returns
+    /// `false` (a no-op) when there is nothing to undo.
+    pub fn undo(&mut self) -> bool {
+        match self.undo_stack.pop() {
+            Some(prev) => {
+                self.redo_stack.push(self.space_snapshot());
+                self.restore(prev);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Reinstate the most recently undone space state, moving the current one back onto the undo
+    /// stack. Returns `false` when there is nothing to redo.
+    pub fn redo(&mut self) -> bool {
+        match self.redo_stack.pop() {
+            Some(next) => {
+                self.undo_stack.push(self.space_snapshot());
+                self.restore(next);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Capture the current space state for the history stacks.
+    fn space_snapshot(&self) -> SpaceSnapshot {
+        SpaceSnapshot {
+            footprint: self.footprint.clone(),
+            volume: self.volume.clone(),
+        }
+    }
+
+    /// Push the current space state onto the undo stack (dropping the oldest past [`HISTORY_LIMIT`])
+    /// and clear the redo stack — the pre-mutation bookkeeping every accepted space command runs.
+    fn record_history(&mut self) {
+        self.undo_stack.push(self.space_snapshot());
+        if self.undo_stack.len() > HISTORY_LIMIT {
+            self.undo_stack.remove(0);
+        }
+        self.redo_stack.clear();
+    }
+
+    /// Replace the space state from a snapshot and rewrite the derived buffers.
+    fn restore(&mut self, snap: SpaceSnapshot) {
+        self.footprint = snap.footprint;
+        self.volume = snap.volume;
+        self.rewrite_space_buffers();
     }
 
     fn draw_wall(&mut self, draw: DrawWall) -> usize {
@@ -165,11 +253,21 @@ impl Session {
     /// drawn face flat rather than auto-extruding it. Replaces any prior space, clearing any volume
     /// the prior footprint had been extruded into (one space at a time, mirroring DrawWall's
     /// redraw-replaces behavior).
-    fn draw_footprint(&mut self, draw: DrawFootprint) -> usize {
+    ///
+    /// The ring is validated first: a degenerate outline (too few vertices, no area, or a
+    /// self-crossing boundary) is **rejected** with its reason and leaves the current space
+    /// untouched, rather than committing a footprint the extrusion kernel would later refuse.
+    fn draw_footprint(&mut self, draw: DrawFootprint) -> CommandOutcome {
+        if let Err(reason) = validate_ring(&draw.vertices) {
+            return CommandOutcome::Rejected { reason };
+        }
+        self.record_history();
         self.footprint = draw.vertices;
         self.volume = None;
         self.rewrite_space_buffers();
-        self.buffer.len()
+        CommandOutcome::Accepted {
+            member_count: self.buffer.len(),
+        }
     }
 
     /// Extrude the current footprint ring into a prism `height` ticks tall, from the ground plane
@@ -193,46 +291,72 @@ impl Session {
     /// Push/pull the current space's top cap by a signed tick distance. Rejects a non-top
     /// `face_index` before touching the kernel. The first positive push on a freshly drawn (flat)
     /// footprint **extrudes** it into a volume of that height; later pushes grow or shrink the
-    /// existing volume. A kernel `None` (degenerate ring, non-top face, or a height driven <= 0)
-    /// leaves state unchanged. On success rewrites the volume buffer.
-    fn push_pull(&mut self, op: PushPull) -> usize {
+    /// existing volume. A move the prism model can't represent (a height driven to zero or below, a
+    /// push with no footprint to act on) is **rejected** with its reason and leaves state unchanged;
+    /// an accepted move records history and rewrites the volume buffer.
+    fn push_pull(&mut self, op: PushPull) -> CommandOutcome {
         if op.face_index != TOP_FACE {
-            return self.buffer.len();
+            return CommandOutcome::Rejected {
+                reason: RejectReason::NotTopFace,
+            };
         }
-        match self.volume.as_mut() {
-            // An existing volume: grow (extrude) or shrink (inset) its height.
-            Some(volume) => {
-                let (mode, magnitude) = if op.distance >= 0 {
-                    (PushPullMode::Extrude, op.distance)
-                } else {
-                    (PushPullMode::Inset, -op.distance)
+        if self.volume.is_some() {
+            // An existing volume: grow (extrude) or shrink (inset) its height. Attempt on a clone so
+            // a kernel refusal (height <= 0) never half-mutates the live volume.
+            let (mode, magnitude) = if op.distance >= 0 {
+                (PushPullMode::Extrude, op.distance)
+            } else {
+                (PushPullMode::Inset, -op.distance)
+            };
+            let mut candidate = self.volume.clone().expect("volume is Some in this branch");
+            let applied = self.kernel.apply_push_pull(
+                &mut candidate,
+                PushPullOp {
+                    target_face_volume: EntityId(u128::from(op.volume_id)),
+                    target_face_index: op.face_index,
+                    distance: Tick(magnitude),
+                    mode,
+                },
+            );
+            if applied.is_none() {
+                return CommandOutcome::Rejected {
+                    reason: RejectReason::NonPositiveHeight,
                 };
-                let applied = self.kernel.apply_push_pull(
-                    volume,
-                    PushPullOp {
-                        target_face_volume: EntityId(u128::from(op.volume_id)),
-                        target_face_index: op.face_index,
-                        distance: Tick(magnitude),
-                        mode,
-                    },
-                );
-                if applied.is_some() {
-                    self.rewrite_space_buffers();
-                }
             }
-            // A flat face has no volume yet: the first positive push lifts it into a prism. A
-            // non-positive distance can't lower a zero-height face, so it leaves the face flat.
-            None => {
-                if op.distance <= 0 {
-                    return self.buffer.len();
-                }
-                self.volume = self.extrude_footprint(Tick(op.distance));
-                if self.volume.is_some() {
-                    self.rewrite_space_buffers();
-                }
-            }
+            self.record_history();
+            self.volume = Some(candidate);
+            self.rewrite_space_buffers();
+            return CommandOutcome::Accepted {
+                member_count: self.buffer.len(),
+            };
         }
-        self.buffer.len()
+        // A flat face has no volume yet: the first push must lift it into a prism.
+        if self.footprint.len() < 3 {
+            return CommandOutcome::Rejected {
+                reason: RejectReason::NoTarget,
+            };
+        }
+        if op.distance <= 0 {
+            // A non-positive distance can't lower a zero-height face below the ground.
+            return CommandOutcome::Rejected {
+                reason: RejectReason::NonPositiveHeight,
+            };
+        }
+        match self.extrude_footprint(Tick(op.distance)) {
+            Some(volume) => {
+                self.record_history();
+                self.volume = Some(volume);
+                self.rewrite_space_buffers();
+                CommandOutcome::Accepted {
+                    member_count: self.buffer.len(),
+                }
+            }
+            // The footprint passed draw-time validation, so a kernel refusal here means a
+            // vanishingly-small area the area check let through — surface it as a zero-area ring.
+            None => CommandOutcome::Rejected {
+                reason: RejectReason::ZeroArea,
+            },
+        }
     }
 
     /// Rewrite the footprint + volume buffers from the current `footprint` ring and `volume`. The
@@ -256,6 +380,29 @@ impl Session {
             });
         }
     }
+}
+
+/// Validate a footprint ring before it becomes canonical. Mirrors what the extrusion kernel would
+/// later refuse, but at draw time and with a specific reason: fewer than three vertices, no enclosed
+/// area (collinear/coincident), or a self-crossing boundary. Order matters — the most specific
+/// structural failure wins, so a bowtie with real area reads as `SelfIntersecting`, not `ZeroArea`.
+fn validate_ring(vertices: &[(i32, i32)]) -> Result<(), RejectReason> {
+    if vertices.len() < 3 {
+        return Err(RejectReason::TooFewVertices);
+    }
+    let path = Path2D::closed(
+        vertices
+            .iter()
+            .map(|&(x, y)| TickVec2::new(Tick(x), Tick(y)))
+            .collect(),
+    );
+    if !path.is_simple() {
+        return Err(RejectReason::SelfIntersecting);
+    }
+    if path.area_in2() <= 0.0 {
+        return Err(RejectReason::ZeroArea);
+    }
+    Ok(())
 }
 
 /// Build a `SpacingModule` from a real inch value — directly, since a wall may be framed at any
@@ -332,11 +479,29 @@ mod tests {
         })
     }
 
+    /// Apply a command that must be accepted, returning the new member count. Keeps the tests
+    /// focused on state, and honors `CommandOutcome`'s `#[must_use]` with a real assertion.
+    fn apply_ok(s: &mut Session, command: Command) -> usize {
+        let outcome = s.apply(command);
+        assert!(outcome.is_accepted(), "expected accepted, got {outcome:?}");
+        outcome.member_count()
+    }
+
+    /// Apply a command that must be rejected for `reason`, asserting canonical state is untouched.
+    fn apply_rejected(s: &mut Session, command: Command, reason: RejectReason) {
+        let outcome = s.apply(command);
+        assert_eq!(
+            outcome,
+            CommandOutcome::Rejected { reason },
+            "expected rejection {reason:?}"
+        );
+    }
+
     #[test]
     fn draw_wall_populates_the_buffer() {
         let mut s = Session::new();
         assert_eq!(s.member_count(), 0);
-        let count = s.apply(draw_10ft_wall());
+        let count = apply_ok(&mut s, draw_10ft_wall());
         assert!(count > 0);
         assert_eq!(s.member_count(), count);
         // The buffer is the full generated block regardless of live count.
@@ -346,8 +511,8 @@ mod tests {
     #[test]
     fn redraw_replaces_rather_than_appends() {
         let mut s = Session::new();
-        let first = s.apply(draw_10ft_wall());
-        let second = s.apply(draw_10ft_wall());
+        let first = apply_ok(&mut s, draw_10ft_wall());
+        let second = apply_ok(&mut s, draw_10ft_wall());
         assert_eq!(first, second); // identical input → identical count, not doubled
     }
 
@@ -397,7 +562,7 @@ mod tests {
     fn draw_footprint_populates_face_without_extruding() {
         use crate::layout::footprint as fp;
         let mut s = Session::new();
-        s.apply(Command::DrawFootprint(square_ring()));
+        apply_ok(&mut s, Command::DrawFootprint(square_ring()));
 
         // footprint: 4 live vertex rows, decoded straight from the bytes.
         assert_eq!(s.footprint_count(), 4);
@@ -419,15 +584,18 @@ mod tests {
     fn push_pull_extrudes_flat_face_then_grows() {
         use crate::layout::volume as vol;
         let mut s = Session::new();
-        s.apply(Command::DrawFootprint(square_ring()));
+        apply_ok(&mut s, Command::DrawFootprint(square_ring()));
 
         // The first positive push lifts the flat face into a volume of exactly that height.
         let first = 2 * 384; // 2ft
-        s.apply(Command::PushPull(PushPull {
-            volume_id: 1,
-            face_index: TOP_FACE,
-            distance: first,
-        }));
+        apply_ok(
+            &mut s,
+            Command::PushPull(PushPull {
+                volume_id: 1,
+                face_index: TOP_FACE,
+                distance: first,
+            }),
+        );
         assert_eq!(s.volume_count(), 1);
         let vbytes = s.volume_bytes();
         assert_eq!(vbytes.len(), vol::BUFFER_BYTES);
@@ -437,11 +605,14 @@ mod tests {
 
         // A second push grows the existing volume.
         let more = 384; // +1ft
-        s.apply(Command::PushPull(PushPull {
-            volume_id: 1,
-            face_index: TOP_FACE,
-            distance: more,
-        }));
+        apply_ok(
+            &mut s,
+            Command::PushPull(PushPull {
+                volume_id: 1,
+                face_index: TOP_FACE,
+                distance: more,
+            }),
+        );
         assert_eq!(
             read_i32(s.volume_bytes(), vol::HEIGHT_OFFSET, 0),
             first + more
@@ -452,36 +623,50 @@ mod tests {
     fn push_pull_inset_does_not_lift_flat_face_and_floors() {
         use crate::layout::volume as vol;
         let mut s = Session::new();
-        s.apply(Command::DrawFootprint(square_ring()));
+        apply_ok(&mut s, Command::DrawFootprint(square_ring()));
 
-        // A negative push on a flat face can't lower it below ground: it stays flat (no volume).
-        s.apply(Command::PushPull(PushPull {
-            volume_id: 1,
-            face_index: TOP_FACE,
-            distance: -384, // -1ft
-        }));
+        // A negative push on a flat face can't lower it below ground: it's rejected, stays flat.
+        apply_rejected(
+            &mut s,
+            Command::PushPull(PushPull {
+                volume_id: 1,
+                face_index: TOP_FACE,
+                distance: -384, // -1ft
+            }),
+            RejectReason::NonPositiveHeight,
+        );
         assert_eq!(s.volume_count(), 0);
 
         // Extrude to 3ft, then inset 1ft down to 2ft.
-        s.apply(Command::PushPull(PushPull {
-            volume_id: 1,
-            face_index: TOP_FACE,
-            distance: 3 * 384,
-        }));
-        s.apply(Command::PushPull(PushPull {
-            volume_id: 1,
-            face_index: TOP_FACE,
-            distance: -384,
-        }));
+        apply_ok(
+            &mut s,
+            Command::PushPull(PushPull {
+                volume_id: 1,
+                face_index: TOP_FACE,
+                distance: 3 * 384,
+            }),
+        );
+        apply_ok(
+            &mut s,
+            Command::PushPull(PushPull {
+                volume_id: 1,
+                face_index: TOP_FACE,
+                distance: -384,
+            }),
+        );
         assert_eq!(read_i32(s.volume_bytes(), vol::HEIGHT_OFFSET, 0), 2 * 384);
         let after_inset = read_i32(s.volume_bytes(), vol::HEIGHT_OFFSET, 0);
 
         // A distance that would drive height <= 0 is refused by the kernel; state unchanged.
-        s.apply(Command::PushPull(PushPull {
-            volume_id: 1,
-            face_index: TOP_FACE,
-            distance: -(after_inset + 1),
-        }));
+        apply_rejected(
+            &mut s,
+            Command::PushPull(PushPull {
+                volume_id: 1,
+                face_index: TOP_FACE,
+                distance: -(after_inset + 1),
+            }),
+            RejectReason::NonPositiveHeight,
+        );
         assert_eq!(
             read_i32(s.volume_bytes(), vol::HEIGHT_OFFSET, 0),
             after_inset
@@ -492,12 +677,16 @@ mod tests {
     fn push_pull_rejects_non_top_face() {
         use geometry_kernel::BASE_FACE;
         let mut s = Session::new();
-        s.apply(Command::DrawFootprint(square_ring()));
-        s.apply(Command::PushPull(PushPull {
-            volume_id: 1,
-            face_index: BASE_FACE, // not the top cap
-            distance: 5 * 384,
-        }));
+        apply_ok(&mut s, Command::DrawFootprint(square_ring()));
+        apply_rejected(
+            &mut s,
+            Command::PushPull(PushPull {
+                volume_id: 1,
+                face_index: BASE_FACE, // not the top cap
+                distance: 5 * 384,
+            }),
+            RejectReason::NotTopFace,
+        );
         // A non-top face never extrudes the flat face.
         assert_eq!(s.volume_count(), 0);
     }
@@ -505,22 +694,28 @@ mod tests {
     #[test]
     fn redraw_footprint_replaces_and_resets_to_flat() {
         let mut s = Session::new();
-        s.apply(Command::DrawFootprint(square_ring()));
+        apply_ok(&mut s, Command::DrawFootprint(square_ring()));
         assert_eq!(s.footprint_count(), 4);
 
         // Extrude the square, then redraw: the new face starts flat again (volume cleared).
-        s.apply(Command::PushPull(PushPull {
-            volume_id: 1,
-            face_index: TOP_FACE,
-            distance: 4 * 384,
-        }));
+        apply_ok(
+            &mut s,
+            Command::PushPull(PushPull {
+                volume_id: 1,
+                face_index: TOP_FACE,
+                distance: 4 * 384,
+            }),
+        );
         assert_eq!(s.volume_count(), 1);
 
         // A triangle (3 vertices) must replace, not append, the prior 4-vertex square.
         let ft = 384;
-        s.apply(Command::DrawFootprint(DrawFootprint {
-            vertices: vec![(0, 0), (8 * ft, 0), (4 * ft, 8 * ft)],
-        }));
+        apply_ok(
+            &mut s,
+            Command::DrawFootprint(DrawFootprint {
+                vertices: vec![(0, 0), (8 * ft, 0), (4 * ft, 8 * ft)],
+            }),
+        );
         assert_eq!(s.footprint_count(), 3);
         assert_eq!(s.volume_count(), 0);
     }
@@ -576,7 +771,7 @@ mod tests {
         assert_eq!(posts, 12, "four California corners × 3 posts, no doubling");
 
         // The single-wall draw path still works after a set frame (it replaces, not appends).
-        let single = s.apply(draw_10ft_wall());
+        let single = apply_ok(&mut s, draw_10ft_wall());
         assert!(single > 0);
         assert_eq!(s.member_count(), single);
     }
@@ -585,7 +780,7 @@ mod tests {
     fn vertical_studs_extend_in_z_plates_in_x() {
         // Decode the first stud and the first plate straight out of the buffer's column bytes.
         let mut s = Session::new();
-        s.apply(draw_10ft_wall());
+        apply_ok(&mut s, draw_10ft_wall());
         let bytes = s.buffer_bytes();
         let read = |off: usize, i: usize| {
             i32::from_le_bytes(bytes[off + i * 4..off + i * 4 + 4].try_into().unwrap())
@@ -621,5 +816,145 @@ mod tests {
             }
         }
         assert!(saw_plate && saw_stud);
+    }
+
+    #[test]
+    fn draw_footprint_rejects_degenerate_rings() {
+        let ft = 384;
+        let mut s = Session::new();
+
+        // Fewer than three vertices — not a polygon.
+        apply_rejected(
+            &mut s,
+            Command::DrawFootprint(DrawFootprint {
+                vertices: vec![(0, 0), (ft, 0)],
+            }),
+            RejectReason::TooFewVertices,
+        );
+
+        // Collinear vertices — no enclosed area.
+        apply_rejected(
+            &mut s,
+            Command::DrawFootprint(DrawFootprint {
+                vertices: vec![(0, 0), (ft, 0), (2 * ft, 0)],
+            }),
+            RejectReason::ZeroArea,
+        );
+
+        // A bowtie — a boundary that crosses itself.
+        apply_rejected(
+            &mut s,
+            Command::DrawFootprint(DrawFootprint {
+                vertices: vec![(0, 0), (ft, ft), (ft, 0), (0, ft)],
+            }),
+            RejectReason::SelfIntersecting,
+        );
+
+        // None of the rejections became canonical.
+        assert_eq!(s.footprint_count(), 0);
+        assert!(!s.can_undo());
+    }
+
+    #[test]
+    fn push_pull_with_no_footprint_is_rejected() {
+        let mut s = Session::new();
+        apply_rejected(
+            &mut s,
+            Command::PushPull(PushPull {
+                volume_id: 1,
+                face_index: TOP_FACE,
+                distance: 4 * 384,
+            }),
+            RejectReason::NoTarget,
+        );
+        assert_eq!(s.volume_count(), 0);
+    }
+
+    #[test]
+    fn undo_redo_round_trips_draw_then_push() {
+        use crate::layout::volume as vol;
+        let height = 3 * 384;
+        let mut s = Session::new();
+        assert!(!s.can_undo() && !s.can_redo());
+
+        apply_ok(&mut s, Command::DrawFootprint(square_ring()));
+        apply_ok(
+            &mut s,
+            Command::PushPull(PushPull {
+                volume_id: 1,
+                face_index: TOP_FACE,
+                distance: height,
+            }),
+        );
+        assert_eq!(s.volume_count(), 1);
+        assert_eq!(read_i32(s.volume_bytes(), vol::HEIGHT_OFFSET, 0), height);
+        assert!(s.can_undo() && !s.can_redo());
+
+        // Undo the push: back to the flat drawn face.
+        assert!(s.undo());
+        assert_eq!(s.footprint_count(), 4);
+        assert_eq!(s.volume_count(), 0);
+        assert!(s.can_undo() && s.can_redo());
+
+        // Undo the draw: back to empty.
+        assert!(s.undo());
+        assert_eq!(s.footprint_count(), 0);
+        assert!(!s.can_undo() && s.can_redo());
+
+        // Redo both: the mass returns to its exact height.
+        assert!(s.redo());
+        assert_eq!(s.footprint_count(), 4);
+        assert!(s.redo());
+        assert_eq!(read_i32(s.volume_bytes(), vol::HEIGHT_OFFSET, 0), height);
+        assert!(!s.can_redo());
+    }
+
+    #[test]
+    fn undo_and_redo_past_the_ends_are_noops() {
+        let mut s = Session::new();
+        assert!(!s.undo());
+        assert!(!s.redo());
+        apply_ok(&mut s, Command::DrawFootprint(square_ring()));
+        assert!(s.undo());
+        assert!(!s.undo()); // nothing older to reach
+    }
+
+    #[test]
+    fn a_fresh_command_clears_the_redo_stack() {
+        let ft = 384;
+        let mut s = Session::new();
+        apply_ok(&mut s, Command::DrawFootprint(square_ring()));
+        assert!(s.undo());
+        assert!(s.can_redo());
+
+        // Branching off an undone state discards the redo future.
+        apply_ok(
+            &mut s,
+            Command::DrawFootprint(DrawFootprint {
+                vertices: vec![(0, 0), (8 * ft, 0), (4 * ft, 8 * ft)],
+            }),
+        );
+        assert!(!s.can_redo());
+        assert_eq!(s.footprint_count(), 3);
+    }
+
+    #[test]
+    fn a_rejected_command_leaves_history_untouched() {
+        let mut s = Session::new();
+        apply_ok(&mut s, Command::DrawFootprint(square_ring()));
+        assert!(s.can_undo() && !s.can_redo());
+
+        // A rejected redraw must not record a history entry (there'd be nothing to undo *to*).
+        apply_rejected(
+            &mut s,
+            Command::DrawFootprint(DrawFootprint {
+                vertices: vec![(0, 0), (384, 0)],
+            }),
+            RejectReason::TooFewVertices,
+        );
+        // Exactly one undo step (the original draw), and the good footprint still stands.
+        assert!(s.undo());
+        assert!(!s.undo());
+        assert_eq!(s.footprint_count(), 0);
     }
 }

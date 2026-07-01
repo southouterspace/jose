@@ -23,6 +23,8 @@ function postSpace(engineRef: Engine): void {
       footprintBuffer,
       volumeCount: engineRef.volumeCount(),
       volumeBuffer,
+      canUndo: engineRef.canUndo(),
+      canRedo: engineRef.canRedo(),
     } satisfies EngineResponse,
     [footprintBuffer, volumeBuffer]
   );
@@ -64,18 +66,51 @@ self.onmessage = async (event: MessageEvent<EngineRequest>): Promise<void> => {
   }
 
   if (request.kind === "drawFootprint") {
-    engine.drawFootprint(
+    const reason = engine.drawFootprint(
       Int32Array.from(request.xs),
       Int32Array.from(request.ys)
     );
+    if (reason) {
+      postMessage({
+        kind: "rejected",
+        command: "drawFootprint",
+        reason,
+      } satisfies EngineResponse);
+      return;
+    }
     postSpace(engine);
     return;
   }
 
   if (request.kind === "pushPull") {
-    // The engine validates the face and rejects a non-positive height; the snapshot reflects the
-    // (possibly unchanged) canonical volume either way, so both panes re-read one consistent state.
-    engine.pushPull(request.volumeId, request.faceIndex, request.distance);
+    // The engine validates the face + resulting height; an empty reason means it took, and the
+    // snapshot reflects the new canonical volume for both panes. A non-empty reason is a rejection.
+    const reason = engine.pushPull(
+      request.volumeId,
+      request.faceIndex,
+      request.distance
+    );
+    if (reason) {
+      postMessage({
+        kind: "rejected",
+        command: "pushPull",
+        reason,
+      } satisfies EngineResponse);
+      return;
+    }
+    postSpace(engine);
+    return;
+  }
+
+  if (request.kind === "undo") {
+    // Reship the snapshot only when the history actually moved; a no-op undo changes nothing.
+    if (engine.undo()) {
+      postSpace(engine);
+    }
+    return;
+  }
+
+  if (request.kind === "redo" && engine.redo()) {
     postSpace(engine);
   }
 };

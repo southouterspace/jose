@@ -9,15 +9,24 @@ then move it into a reference/rule/exemplar and delete it here.
 
 ## States and resilience
 
-- **No error / rejected-command state.** A failed engine load, a rejected `DrawFootprint`/`PushPull`,
-  or a `LAYOUT_HASH` mismatch (`assertLayout`) has no user-facing treatment. No decision yet on what
-  the user sees, whether input is preserved, or how they recover. (`resilience.md`.)
+- **Partial rejected-command state.** A rejected `DrawFootprint`/`PushPull` now surfaces: the engine
+  returns a `RejectReason` code, the worker relays it as a `rejected` message, and the store raises a
+  dismissible, auto-expiring **toast** (`role="alert"`, copy in `rejection.ts`). Unparseable value-box
+  entries route through the same path (`store.flagRejection`). **Still uncovered:** a failed engine
+  load and a `LAYOUT_HASH` mismatch (`assertLayout` throws with no user-facing treatment); the toast
+  is also the only rejection surface — there's no inline field-level validation. (`resilience.md`.)
 - **No permission/empty-billing/auth states.** There is no account or persistence surface in the MVP
   (`apps/api` is orthogonal). Nothing to standardize yet.
-- **No undo / redo.** Nothing reverses a draw or a push/pull. This raises the bar for any destructive
-  action (`rule/destructive-names-action`) — don't ship one assuming undo exists.
-- **No degenerate-geometry feedback.** Self-intersecting, zero-area, or out-of-bounds footprints
-  aren't flagged client-side; the engine is the authority but its rejection isn't surfaced.
+- **Undo / redo exists (space history).** The `Session` keeps a bounded space-state history;
+  `DrawFootprint` and `PushPull` are undoable via the toolbar buttons and Cmd/Ctrl+Z / Shift+Z (Ctrl+Y).
+  **Still uncovered:** the legacy `DrawWall` path doesn't participate, there's no history affordance
+  beyond button enablement, and no multi-space model to reverse across. Destructive actions still can't
+  *assume* undo covers them (`rule/destructive-names-action`).
+- **Degenerate-geometry feedback exists at draw time.** Footprints with too few vertices, zero area
+  (collinear), or a self-crossing boundary (`Path2D::is_simple`) are rejected **before** they become
+  canonical, with a specific toast per reason. **Still uncovered:** out-of-bounds/overflow rings and
+  any *warning* (vs hard reject) treatment; there's no client-side preview of the rejection while
+  drawing (it fires on commit).
 
 ## Responsive and input
 
@@ -38,7 +47,8 @@ then move it into a reference/rule/exemplar and delete it here.
 - **No selection or hover affordance** — the grabbable top cap isn't signaled until you try it.
 - **Typed height entry lands only after a mass exists** — the value box (`ValueBox`, `value: "height"`)
   sets an exact height, but Push/Pull is gated on an existing mass, so the *first* extrude is still
-  gesture-only; invalid typed input is silently ignored (no rejected-value state).
+  gesture-only. Invalid typed input now raises a toast (`store.flagRejection`) instead of being
+  silently dropped.
 
 ## Design system
 

@@ -42,7 +42,8 @@ keep the top cap visually and structurally identifiable as the interactive face.
 - **Freeze orbit during the drag** (`controls.enabled = false`) and restore it on release. A new drag
   interaction must do the same so gestures don't fight.
 - Distance is **signed** — dragging down is negative. A non-positive resulting height renders no mass
-  (`rebuildMass` guards `height > 0`); decide what that should *say* to the user before allowing it.
+  (`rebuildMass` guards `height > 0`) and the engine now **rejects** the push with a reason surfaced
+  in the toast (`non_positive_height`), rather than silently doing nothing.
 
 ## Camera framing — preserve the user's context
 
@@ -60,8 +61,8 @@ mass reads as a solid.
   the active tool's `value` grammar is `height`, ADR 0012 §4) accepts an absolute height in
   feet/inches and commits it as a signed push/pull delta. It's gated by the tool's enablement
   (Push/Pull needs a mass), so you still can't type a height on a flat, not-yet-extruded face — that
-  first extrude is gesture-only. Invalid input is silently ignored (no rejected-value treatment yet,
-  `resilience.md`).
+  first extrude is gesture-only. Invalid input is **no longer silent** — an unparseable height raises
+  a toast telling the user how to phrase it (`store.flagRejection`).
 - **No any-face push/pull** — top-cap vertical only by decision (ADR 0007 §3); don't imply otherwise.
 - **No framing/studs** — massing solids only in the MVP.
 

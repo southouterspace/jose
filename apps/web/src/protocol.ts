@@ -31,7 +31,11 @@ export type EngineRequest =
       readonly volumeId: number;
       readonly faceIndex: number;
       readonly distance: number;
-    };
+    }
+  /** Step back to / forward through the engine's space-state history (undo/redo). No payload; the
+   *  engine reships a `space` snapshot when the model actually changes. */
+  | { readonly kind: "undo" }
+  | { readonly kind: "redo" };
 
 /** Channel B + acks (worker → main thread). */
 export type EngineResponse =
@@ -43,10 +47,21 @@ export type EngineResponse =
     }
   | {
       /** One recompute, both space buffers: footprint vertices + the extruded volume (ADR 0008 §5).
-       *  Each `buffer` is the canonical SoA snapshot bytes; the `*Count`s bound the live rows. */
+       *  Each `buffer` is the canonical SoA snapshot bytes; the `*Count`s bound the live rows.
+       *  `canUndo`/`canRedo` carry the engine's live history availability so the toolbar stays in
+       *  sync after every mutation (draw, push/pull, undo, redo). */
       readonly kind: "space";
       readonly footprintCount: number;
       readonly footprintBuffer: ArrayBuffer;
       readonly volumeCount: number;
       readonly volumeBuffer: ArrayBuffer;
+      readonly canUndo: boolean;
+      readonly canRedo: boolean;
+    }
+  | {
+      /** A command the engine refused (a degenerate footprint, an out-of-model push/pull). Canonical
+       *  state is unchanged; `reason` is the stable code (`RejectReason::code`) the UI maps to copy. */
+      readonly kind: "rejected";
+      readonly command: "drawFootprint" | "pushPull";
+      readonly reason: string;
     };

@@ -14,6 +14,7 @@ body {
 }
 
 .app {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100vh;
@@ -36,6 +37,13 @@ body {
 .toolbar__tools {
   display: flex;
   gap: 0.5rem;
+}
+
+/* History actions (Undo/Redo) sit at the right edge of the toolbar, apart from the tools. */
+.toolbar__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
 }
 
 .toolbar__tool {
@@ -250,4 +258,54 @@ body {
   color: #9aa;
   background: #202024;
   border-top: 1px solid #333;
+}
+
+/* Rejected-command toast: a transient, dismissible alert for a refused command or an invalid typed
+   value. Bottom-centered, above the status bar; `role="alert"` announces it to assistive tech. */
+.toast {
+  position: absolute;
+  bottom: 3rem;
+  left: 50%;
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  max-width: min(90vw, 32rem);
+  padding: 0.6rem 0.5rem 0.6rem 0.9rem;
+  font-size: 0.85rem;
+  color: #ffe3e3;
+  background: #4a2530;
+  border: 1px solid #d98c8c;
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 35%);
+  transform: translateX(-50%);
+}
+
+.toast__message {
+  line-height: 1.3;
+}
+
+.toast__dismiss {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  font: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: #ffe3e3;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+}
+
+.toast__dismiss:hover {
+  background: rgb(255 255 255 / 12%);
+}
+
+.toast__dismiss:focus-visible {
+  outline: 2px solid #ffd7d7;
+  outline-offset: 1px;
 }

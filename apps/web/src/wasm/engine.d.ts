@@ -24,11 +24,20 @@ declare module "*/bim_wasm.js" {
       spacingInches: number
     ): number;
     /** Channel A: draw/redraw the current space's footprint from a closed ring of plan vertices
-     *  (parallel tick columns); returns the live member count. */
-    drawFootprint(xs: Int32Array, ys: Int32Array): number;
-    /** Channel A: push/pull a volume's face (the 3D top-cap gesture) by a signed tick distance;
-     *  returns the live volume count. */
-    pushPull(volumeId: number, faceIndex: number, distance: number): number;
+     *  (parallel tick columns). Returns `""` when accepted, or a stable rejection code
+     *  (`RejectReason::code`) when the ring is degenerate and state is unchanged. */
+    drawFootprint(xs: Int32Array, ys: Int32Array): string;
+    /** Channel A: push/pull a volume's face (the 3D top-cap gesture) by a signed tick distance.
+     *  Returns `""` when accepted, or a stable rejection code when the move is refused. */
+    pushPull(volumeId: number, faceIndex: number, distance: number): string;
+    /** Channel A: step back to the previous space state; `true` when the model changed. */
+    undo(): boolean;
+    /** Channel A: reinstate the most recently undone space state; `true` when it changed. */
+    redo(): boolean;
+    /** Whether there is a prior state to undo to. */
+    canUndo(): boolean;
+    /** Whether there is an undone state to redo. */
+    canRedo(): boolean;
     /** Live member count. */
     memberCount(): number;
     /** Live footprint vertex count. */
