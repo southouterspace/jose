@@ -27,6 +27,10 @@ declare module "*/bim_wasm.js" {
      *  (parallel tick columns). Returns `""` when accepted, or a stable rejection code
      *  (`RejectReason::code`) when the ring is degenerate and state is unchanged. */
     drawFootprint(xs: Int32Array, ys: Int32Array): string;
+    /** Channel A: edit the current footprint from its mutated ring (parallel tick columns) — the
+     *  `drawFootprint` ABI, but re-extruded at the current mass height instead of flattening it
+     *  (ADR 0015). Returns `""` when accepted, or a stable rejection code when the edit is degenerate. */
+    editFootprint(xs: Int32Array, ys: Int32Array): string;
     /** Channel A: push/pull a volume's face (the 3D top-cap gesture) by a signed tick distance.
      *  Returns `""` when accepted, or a stable rejection code when the move is refused. */
     pushPull(volumeId: number, faceIndex: number, distance: number): string;
