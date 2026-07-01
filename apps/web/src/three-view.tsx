@@ -486,6 +486,7 @@ export function ThreeView({ store }: ThreeViewProps) {
   const currentVolumeId = current?.volumeId ?? VOLUME_ID;
   const showHeightEntry = toolChrome(store.activeTool)?.value === "height";
 
+  // Height has no axis-lock notion; the submit modifiers are irrelevant here.
   const submitHeight = (): void => {
     const target = parseLength(heightInput);
     if (target !== null) {

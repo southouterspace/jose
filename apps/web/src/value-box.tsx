@@ -8,6 +8,11 @@
 
 import type { KeyboardEvent } from "react";
 
+/** Modifier state carried with a submit — e.g. the plan's "type a length + Shift = lock to axis". */
+export interface SubmitModifiers {
+  readonly shiftKey: boolean;
+}
+
 export interface ValueBoxProps {
   /** Accessible name for the input (the visible label is decorative). */
   readonly ariaLabel: string;
@@ -18,8 +23,8 @@ export interface ValueBoxProps {
   /** Escape while focused — a surface can clear/bail out of an in-progress entry. */
   readonly onCancel?: () => void;
   readonly onChange: (value: string) => void;
-  /** Enter while focused — commit the typed value. */
-  readonly onSubmit: () => void;
+  /** Enter while focused — commit the typed value; `modifiers` carries the held keys at submit. */
+  readonly onSubmit: (modifiers: SubmitModifiers) => void;
   readonly placeholder: string;
   readonly value: string;
 }
@@ -28,8 +33,9 @@ export function ValueBox(props: ValueBoxProps) {
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
     if (event.key === "Enter") {
       event.preventDefault();
-      props.onSubmit();
+      props.onSubmit({ shiftKey: event.shiftKey });
     } else if (event.key === "Escape") {
+      event.preventDefault();
       props.onCancel?.();
     }
   };
