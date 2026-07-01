@@ -142,7 +142,12 @@ export const TOOL_CHROME: readonly ToolChrome[] = [
     surfaces: ["3d"],
     value: "height",
     runnerBacked: false,
-    enabled: (state) => state.hasMass,
+    // Enabled once a **closed footprint** exists — its top cap is what push/pull acts on, whether the
+    // face is still flat (the first extrude lifts it into a mass) or already a mass (later pushes grow
+    // or shrink it). `footprintVertices` counts the canonical, closed committed ring (the mid-draw
+    // polyline lives in `pendingPicks`), so this can't fire on a half-drawn outline. Gating on
+    // `hasMass` was the bug: you need push/pull to *make* the first mass, so it can't require one.
+    enabled: (state) => state.footprintVertices >= 3,
     status: () =>
       "Push/Pull active — drag the top cap in 3D to set the mass height",
   },

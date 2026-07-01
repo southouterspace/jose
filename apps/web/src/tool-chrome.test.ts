@@ -41,10 +41,17 @@ describe("tool-chrome registry", () => {
       selectedKind: null,
     };
 
-    test("push/pull is disabled without a mass, enabled with one", () => {
+    test("push/pull is disabled with no footprint, enabled once one is closed", () => {
       const pushpull = toolChrome("pushpull");
+      // No footprint yet (a half-drawn 2-pick outline doesn't count).
       expect(pushpull?.enabled(base)).toBe(false);
-      expect(pushpull?.enabled({ ...base, hasMass: true })).toBe(true);
+      expect(pushpull?.enabled({ ...base, footprintVertices: 2 })).toBe(false);
+      // A closed footprint enables it — the first push/pull is how the flat face becomes a mass, so
+      // it must be reachable *before* a mass exists (not gated on hasMass).
+      expect(pushpull?.enabled({ ...base, footprintVertices: 3 })).toBe(true);
+      expect(
+        pushpull?.enabled({ ...base, footprintVertices: 4, hasMass: true })
+      ).toBe(true);
     });
 
     test("footprint is always available", () => {

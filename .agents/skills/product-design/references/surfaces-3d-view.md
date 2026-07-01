@@ -57,12 +57,13 @@ mass reads as a solid.
 
 - **No selection / no hover affordance** — there's no indication the top cap is grabbable until you
   try, and no other pickable element.
-- **Typed height entry exists, but only once a mass exists.** The value box (`ValueBox`, docked when
-  the active tool's `value` grammar is `height`, ADR 0012 §4) accepts an absolute height in
-  feet/inches and commits it as a signed push/pull delta. It's gated by the tool's enablement
-  (Push/Pull needs a mass), so you still can't type a height on a flat, not-yet-extruded face — that
-  first extrude is gesture-only. Invalid input is **no longer silent** — an unparseable height raises
-  a toast telling the user how to phrase it (`store.flagRejection`).
+- **Typed height entry.** The value box (`ValueBox`, docked when the active tool's `value` grammar is
+  `height`, ADR 0012 §4) accepts an absolute height in feet/inches and commits it as a signed push/pull
+  delta. Push/Pull is enabled as soon as a **closed footprint** exists (`footprintVertices >= 3`), so
+  the **first extrude** works on a flat face by *either* dragging the top cap *or* typing a height — it's
+  not gesture-only. (It used to be gated on `hasMass`, which was a bug: you need push/pull to make the
+  first mass, so it can't require one.) Invalid input is **not silent** — an unparseable height raises a
+  toast telling the user how to phrase it (`store.flagRejection`).
 - **No any-face push/pull** — top-cap vertical only by decision (ADR 0007 §3); don't imply otherwise.
 - **No framing/studs** — massing solids only in the MVP.
 
