@@ -172,6 +172,30 @@ body {
   paint-order: stroke;
 }
 
+/* Persistent per-edge length labels on the committed footprint — centered on each edge, quieter than
+   the live cursor readout so they read as annotation, not the active gesture. */
+.plan__edgelen {
+  font-size: 10px;
+  font-weight: 600;
+  pointer-events: none;
+  text-anchor: middle;
+  fill: #9fb4d8;
+  stroke: #1b1b1f;
+  stroke-width: 3px;
+  paint-order: stroke;
+}
+
+/* Running overall size (width × depth), pinned to the top-left corner of the plan surface. */
+.plan__extents {
+  font-size: 11px;
+  font-weight: 600;
+  pointer-events: none;
+  fill: #cfe0ff;
+  stroke: #1b1b1f;
+  stroke-width: 3px;
+  paint-order: stroke;
+}
+
 /* Close target: a halo + label on the first vertex when a click would close the ring. */
 .plan__close circle {
   fill: rgb(122 222 160 / 22%);

@@ -34,6 +34,18 @@ avoid "outline", "polygon", "sketch", "perimeter"._
 - The grid is **1ft spacing** (`GRID_TICKS = 384`) across a `±7680`-tick half-extent, redrawn per
   camera. Anything the user displays should be feet/inches, not ticks (`copy.md`).
 
+## The measurement HUD (P1 #6/#7)
+
+- The live draw shows a **length + angle** readout trailing the cursor (`plan__dim`, via
+  `hud.ts`'s `segmentReadout`) — e.g. `12' 0"  45°`. The angle is the segment's plan bearing, degrees
+  CCW from world +X (east 0, north 90), matching what the value box's polar entry types back.
+- The committed footprint carries **persistent per-edge length labels** (`plan__edgelen`, centered on
+  each edge midpoint) and a **running width×depth** readout pinned to the top-left corner
+  (`plan__extents`) — the overall size updates live from the in-progress picks while drawing.
+- The value box accepts an optional **`< angle` clause** for polar entry: `10' 6" < 45` places the next
+  vertex at that length *and* absolute bearing (`parsePolarLength` / `pointAtAngle`). A bare length still
+  runs along the cursor direction, and Shift+Enter still axis-locks it. All feet/inches, never ticks.
+
 ## The select interaction (P0 #3)
 
 - The **select tool** (shortcut `S`) picks a piece of the committed footprint under the cursor — a
@@ -59,9 +71,10 @@ avoid "outline", "polygon", "sketch", "perimeter"._
 
 ## Coverage gaps (don't claim these work)
 
-- **No grid snap / no angle guide.** Picks land at the raw cursor tick. A live length readout
-  (`plan__dim`) and alignment guides to existing vertices exist, but there's no grid snapping, no
-  angle guide, and no editable dimension. The plan intends snapping; it isn't there yet.
+- **No angle *inference guide*.** The live readout now shows the segment's angle and typed polar
+  entry (`< angle`) exists (P1 #6/#7), but the inference engine still doesn't *snap* to angles
+  (e.g. parallel/perpendicular/45°) — only to existing vertices' rows/columns. And committed
+  dimensions are read-only labels: there's no click-a-label-to-edit yet.
 - **No footprint editing after close.** Selection (P0 #3) exists, but selecting a vertex/edge doesn't
   yet let you move it — no vertex drag, insert, or delete on a committed footprint.
 - **Degenerate geometry is rejected on commit, not previewed.** A zero-area or self-intersecting ring

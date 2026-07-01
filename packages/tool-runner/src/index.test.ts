@@ -4,6 +4,8 @@ import {
   formatLength,
   inferAlignment,
   parseLength,
+  parsePolarLength,
+  pointAtAngle,
   pointAtDistance,
   pushPullDistance,
   TOOL_CATALOG,
@@ -251,6 +253,44 @@ test("pointAtDistance places a point an exact distance along the cursor directio
     x: 389,
     y: 5,
   });
+});
+
+test("pointAtAngle places a point at an absolute bearing (CCW from +X, world Y up)", () => {
+  // Due east: cos0=1, sin0=0.
+  expect(pointAtAngle({ x: 0, y: 0 }, 1920, 0)).toEqual({ x: 1920, y: 0 });
+  // Due north (world Y up): 90° → +Y.
+  expect(pointAtAngle({ x: 0, y: 0 }, 1920, 90)).toEqual({ x: 0, y: 1920 });
+  // A negative bearing drops below the anchor.
+  expect(pointAtAngle({ x: 10, y: 10 }, 384, -90)).toEqual({ x: 10, y: -374 });
+});
+
+test("parsePolarLength reads a length with an optional < angle clause", () => {
+  // Bare length: no angle → cursor direction (null).
+  expect(parsePolarLength("10' 6\"")).toEqual({
+    lengthTicks: 10 * 384 + 6 * 32,
+    angleDegrees: null,
+  });
+  // Length < angle (both `<` and `∠` separate them).
+  expect(parsePolarLength("12<90")).toEqual({
+    lengthTicks: 12 * 384,
+    angleDegrees: 90,
+  });
+  expect(parsePolarLength("8' ∠ -30")).toEqual({
+    lengthTicks: 8 * 384,
+    angleDegrees: -30,
+  });
+  // A blank or unparseable angle clause falls back to the cursor direction, not a rejection.
+  expect(parsePolarLength("8'<")).toEqual({
+    lengthTicks: 8 * 384,
+    angleDegrees: null,
+  });
+  expect(parsePolarLength("8'<abc")).toEqual({
+    lengthTicks: 8 * 384,
+    angleDegrees: null,
+  });
+  // No positive length → null (the length is the required part).
+  expect(parsePolarLength("<45")).toBeNull();
+  expect(parsePolarLength("")).toBeNull();
 });
 
 test("inferAlignment snaps a point onto an existing vertex's row/column within tolerance", () => {

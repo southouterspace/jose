@@ -4,13 +4,15 @@
  * While the footprint tool is active, clicks add ring vertices and a click near the first closes the
  * ring, sending a `DrawFootprint` command into the worker. Holding Shift while clicking locks the new
  * edge to the X or Y axis (orthogonal drawing). As the cursor moves it shows a live preview: a
- * rubber-band segment, dashed alignment guides to existing vertices, and a highlighted close target
- * when a click would close the ring. The value-entry box accepts an exact length (feet/inches) to
- * place the next vertex precisely along the current direction.
+ * rubber-band segment, dashed alignment guides to existing vertices, a live **length + angle** readout
+ * (`hud.ts`), and a highlighted close target when a click would close the ring. The value-entry box
+ * accepts an exact length (feet/inches), optionally with a `< angle` clause for an absolute bearing
+ * (`10' 6" < 45`), to place the next vertex precisely.
  *
  * When the snapshot returns, this renders the footprint polygon **from the `FootprintMirror`** — the
- * engine's canonical ring — never from the raw clicks. The mid-draw polyline (`pendingPicks`), the
- * preview, and the guides are transient UI only.
+ * engine's canonical ring — never from the raw clicks — and labels each committed edge with its length
+ * plus the overall width×depth. The mid-draw polyline (`pendingPicks`), the preview, and the guides are
+ * transient UI only.
  *
  * The view is navigable (P0 #2): scroll zooms toward the cursor, middle-drag pans, and Fit / Shift+Z
  * runs Zoom-Extents. All of it flows through one `PlanCamera` (`plan-camera.ts`) held in state — the
@@ -22,8 +24,13 @@
  */
 
 import type { FootprintMirror } from "@jose/render-mirror";
-import type { DraftPoint } from "@jose/tool-runner";
-import { formatLength, parseLength, pointAtDistance } from "@jose/tool-runner";
+import type { DraftPoint, Point } from "@jose/tool-runner";
+import {
+  formatLength,
+  parsePolarLength,
+  pointAtAngle,
+  pointAtDistance,
+} from "@jose/tool-runner";
 import {
   type PointerEvent,
   type ReactElement,
@@ -33,6 +40,13 @@ import {
   useState,
 } from "react";
 import type { EngineStore } from "./engine-store";
+import {
+  edgeLabels,
+  footprintExtents,
+  formatExtents,
+  segmentAngleDegrees,
+  segmentReadout,
+} from "./hud";
 import {
   boundsOf,
   DEFAULT_CAMERA,
@@ -105,6 +119,43 @@ function selectionCue(
       points={ringVertices.map((v) => `${px(v)},${py(v)}`).join(" ")}
     />
   );
+}
+
+/** Resolve the plan value box's typed entry into the next vertex — a length along the cursor
+ *  direction, or (with a `< angle` clause) a length at that absolute bearing. Returns the exact world
+ *  point, or an `error` string to surface when the entry names no length. */
+function resolveTypedVertex(
+  anchor: Point,
+  draft: DraftPoint,
+  input: string,
+  axisLock: boolean
+): { point: Point } | { error: string } {
+  const entry = parsePolarLength(input);
+  if (entry === null) {
+    return { error: "Enter a length like 10' 6\", or 10' 6\" < 45." };
+  }
+  const point =
+    entry.angleDegrees === null
+      ? pointAtDistance(anchor, draft.point, entry.lengthTicks, axisLock)
+      : pointAtAngle(anchor, entry.lengthTicks, entry.angleDegrees);
+  return { point };
+}
+
+/** Persistent length labels on a committed footprint — one per edge, centered on the edge midpoint. */
+function edgeLengthCues(
+  camera: PlanCamera,
+  ringVertices: readonly RingVertex[]
+): ReactElement[] {
+  return edgeLabels(ringVertices).map((label) => (
+    <text
+      className="plan__edgelen"
+      key={`e${label.midX},${label.midY}`}
+      x={toScreenX(camera, label.midX)}
+      y={toScreenY(camera, label.midY)}
+    >
+      {formatLength(label.lengthTicks)}
+    </text>
+  ));
 }
 
 /** A client pointer position in the fixed viewBox pixel space (independent of the element's size). */
@@ -391,25 +442,30 @@ export function PlanView({ store }: PlanViewProps) {
 
   /** The previous vertex the next segment grows from — the anchor for value entry and the rubber band. */
   const anchor = store.pendingPicks.at(-1) ?? null;
-  /** Live segment length (anchor → cursor), ticks, while drawing. */
-  const liveLength =
+  /** The live segment (anchor → cursor) while drawing: its length (ticks) and bearing (degrees CCW
+   *  from +X) — what the readout shows and the value box's polar placeholder echoes. */
+  const liveSegment =
     anchor && draft
-      ? Math.hypot(draft.point.x - anchor.x, draft.point.y - anchor.y)
+      ? {
+          lengthTicks: Math.round(
+            Math.hypot(draft.point.x - anchor.x, draft.point.y - anchor.y)
+          ),
+          angleDeg: segmentAngleDegrees(anchor, draft.point),
+        }
       : null;
 
-  /** Place the next vertex at the typed length along the current cursor direction. */
+  /** Place the next vertex from the typed value box (length, or `length < angle`); flags an
+   *  unparseable entry rather than swallowing it. */
   const commitLength = (axisLock: boolean): void => {
     if (!(anchor && draft)) {
       return;
     }
-    const ticks = parseLength(lengthInput);
-    if (ticks === null) {
-      // Don't silently swallow an unparseable entry — tell the user how to phrase it.
-      store.flagRejection("Enter a length like 10' 6\" or 126in.");
+    const result = resolveTypedVertex(anchor, draft, lengthInput, axisLock);
+    if ("error" in result) {
+      store.flagRejection(result.error);
       return;
     }
-    const target = pointAtDistance(anchor, draft.point, ticks, axisLock);
-    store.pick(target, { exact: true });
+    store.pick(result.point, { exact: true });
     setLengthInput("");
     setDraft(null);
   };
@@ -423,6 +479,11 @@ export function PlanView({ store }: PlanViewProps) {
   const ringVertices = ringOf(footprint);
   const hoverCue = visibleHover(isSelect, hover, store.selection);
   const cursor = surfaceCursor(panning, isSelect, hoverCue !== null);
+
+  // Running width×depth: the in-progress picks + cursor while drawing, else the committed ring.
+  const extentsPoints: readonly Point[] =
+    showPreview && draft ? [...store.pendingPicks, draft.point] : ringVertices;
+  const extents = footprintExtents(extentsPoints);
 
   return (
     <div className="plan__wrap">
@@ -528,15 +589,15 @@ export function PlanView({ store }: PlanViewProps) {
           />
         )}
         {showPreview &&
-          liveLength !== null &&
-          liveLength > 0 &&
+          liveSegment &&
+          liveSegment.lengthTicks > 0 &&
           !draft.closing && (
             <text
               className="plan__dim"
               x={sx(draft.point.x) + 10}
               y={sy(draft.point.y) - 10}
             >
-              {formatLength(Math.round(liveLength))}
+              {segmentReadout(liveSegment.lengthTicks, liveSegment.angleDeg)}
             </text>
           )}
 
@@ -545,9 +606,19 @@ export function PlanView({ store }: PlanViewProps) {
           <polygon className="plan__footprint" points={ringPoints(footprint)} />
         )}
 
+        {/* Persistent dimension labels: each committed edge's length at its midpoint. */}
+        {hasRing && edgeLengthCues(camera, ringVertices)}
+
         {/* Selection cues: hover under, the committed selection on top. */}
         {selectionCue(camera, ringVertices, hoverCue, "hover")}
         {selectionCue(camera, ringVertices, store.selection, "selected")}
+
+        {/* Running overall size (width × depth), pinned to the corner so it never trails the cursor. */}
+        {extents && (
+          <text className="plan__extents" x={12} y={24}>
+            {formatExtents(extents.width, extents.depth)}
+          </text>
+        )}
       </svg>
 
       {/* Plan navigation: scroll zooms, middle-drag pans, this fits the drawing to the view. */}
@@ -564,9 +635,12 @@ export function PlanView({ store }: PlanViewProps) {
       </div>
 
       {/* Value-entry box (shared VCB): type an exact length, Enter to place the vertex along the
-          cursor direction; Shift+Enter locks it to an axis (ADR 0012 §4). */}
+          cursor direction; add `< angle` for an absolute bearing (`10' 6" < 45`); Shift+Enter locks a
+          bare length to an axis (ADR 0012 §4). */}
       <ValueBox
-        ariaLabel="Segment length in feet and inches"
+        ariaLabel={
+          'Segment length in feet and inches — add "< angle" for a bearing'
+        }
         disabled={!canEnterLength}
         label="Length"
         onCancel={() => {
@@ -577,9 +651,9 @@ export function PlanView({ store }: PlanViewProps) {
         onChange={setLengthInput}
         onSubmit={({ shiftKey }) => commitLength(shiftKey)}
         placeholder={
-          liveLength !== null && liveLength > 0
-            ? formatLength(Math.round(liveLength))
-            : `e.g. 10' 6"`
+          liveSegment && liveSegment.lengthTicks > 0
+            ? segmentReadout(liveSegment.lengthTicks, liveSegment.angleDeg)
+            : `e.g. 10' 6" < 45`
         }
         value={lengthInput}
       />
