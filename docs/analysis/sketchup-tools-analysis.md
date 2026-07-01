@@ -88,7 +88,7 @@ Grounded in the current code (`packages/tool-runner`, `apps/web/src/plan-view.ts
 | **1.4 Push/Pull** | **Built (top-cap only).** Raycast top cap → drag → `PushPull`. Any-face deferred by ADR 0007 §3. | `three-view.tsx`, `command.rs` |
 | **1.5 Faces / topology** | **Built for the one case.** Close ring → footprint face → extrude to mass. General carving needs BREP (deferred). | `session.rs`, ADR 0007 |
 | **1.6 Components / assemblies** | **Missing (domain-latent).** 13 `FramingRole`s and a `MemberPlacement` buffer exist but nothing user-facing; no wall types, no openings, no reusable units. | `render-mirror`, `building::FramingRole` |
-| **1.7 Navigation** | **3D: yes** (OrbitControls). **Plan: no pan/zoom** — a fixed window; off-view geometry is unreachable. No Zoom-Extents anywhere. | `surfaces-plan-view.md` coverage gaps |
+| **1.7 Navigation** | **3D: yes** (OrbitControls). **Plan: yes** — scroll-zoom (to cursor), middle-drag pan, and Fit / Shift+Z Zoom-Extents landed (P0 #2), via a stateful `PlanCamera`. Zoom-Extents in 3D still absent. | `plan-camera.ts`, `plan-view.tsx` |
 | **1.8 Selection / editing** | **Missing entirely.** No selection, no hover affordance, no vertex drag/insert/delete, no post-close footprint editing. | `coverage-gaps.md` |
 | **1.9 Chrome / undo** | **Partial.** Toolbar + status bar exist. **No undo/redo. No error/rejected-command state. No hover cues.** | `coverage-gaps.md` |
 
@@ -175,10 +175,10 @@ lands.
    gap and it *gates* everything destructive (vertex delete, clear, opening-cut all assume undo
    exists). Needs a command history in `Session` (the engine already funnels every mutation through
    `Session::apply` — an ordered command log + replay/inverse is the natural seam). `Ctrl+Z`/`Ctrl+Shift+Z`.
-2. **Plan pan / zoom + Zoom-Extents.** The plan view is a fixed window; a footprint drawn off the
-   `±7680`-tick span is unreachable. Scroll-zoom, drag-pan, and a "zoom to fit" are basic navigation
-   parity with the 3D pane. (`plan-view.tsx` transforms already isolate `wx/wy`/`sx/sy` — make the
-   scale/offset stateful.)
+2. ~~**Plan pan / zoom + Zoom-Extents.**~~ ✅ **Landed.** The plan's world↔screen transform is now a
+   stateful `PlanCamera` (`plan-camera.ts`, pure + unit-tested): scroll zooms toward the cursor,
+   middle-drag pans, and a **Fit** button / **Shift+Z** run Zoom-Extents (framing the footprint +
+   in-progress picks, with a degenerate-geometry fallback). Off-view geometry is reachable again.
 3. **Selection model.** Click to select a footprint / vertex / edge (and later a member); hover
    affordance; `Esc` to clear. This is the precondition for *all* editing (P2) and for any
    properties panel. Start in plan; extend to 3D.

@@ -101,6 +101,31 @@ body {
   cursor: crosshair;
 }
 
+/* Plan navigation controls (Zoom-Extents), pinned top-right, out of the drawing area. */
+.plan__nav {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  display: flex;
+  gap: 0.4rem;
+}
+
+.plan__navbtn {
+  padding: 0.25rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #cfe0ff;
+  cursor: pointer;
+  background: rgb(32 32 36 / 92%);
+  border: 1px solid #3a3a40;
+  border-radius: 4px;
+}
+
+.plan__navbtn:hover {
+  background: rgb(46 46 54 / 95%);
+  border-color: #4a4a52;
+}
+
 .plan__grid line {
   stroke: #2f2f37;
   stroke-width: 1;

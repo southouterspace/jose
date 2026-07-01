@@ -11,87 +11,39 @@
  * When the snapshot returns, this renders the footprint polygon **from the `FootprintMirror`** — the
  * engine's canonical ring — never from the raw clicks. The mid-draw polyline (`pendingPicks`), the
  * preview, and the guides are transient UI only.
+ *
+ * The view is navigable (P0 #2): scroll zooms toward the cursor, middle-drag pans, and Fit / Shift+Z
+ * runs Zoom-Extents. All of it flows through one `PlanCamera` (`plan-camera.ts`) held in state — the
+ * pure world↔screen transform every coordinate below is derived from.
  */
 
 import type { FootprintMirror } from "@jose/render-mirror";
 import type { DraftPoint } from "@jose/tool-runner";
 import { formatLength, parseLength, pointAtDistance } from "@jose/tool-runner";
-import { type PointerEvent, useRef, useState } from "react";
+import { type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { EngineStore } from "./engine-store";
+import {
+  boundsOf,
+  DEFAULT_CAMERA,
+  fitToBounds,
+  type PlanCamera,
+  panBy,
+  toScreenX,
+  toScreenY,
+  toWorldX,
+  toWorldY,
+  VIEW_H,
+  VIEW_W,
+  zoomAt,
+} from "./plan-camera";
 import { ValueBox } from "./value-box";
 
-/** Screen pixels per world tick. 1 tick = 1/32in; ~0.05 px/tick ≈ a 10ft wall is ~192px. */
-const PX_PER_TICK = 0.05;
-/** World-space tick offset placed at the viewport origin, so the drawing area sits in view. */
-const ORIGIN_TICKS = { x: 1920, y: 1920 };
 /** Grid line spacing in world ticks (384 = 1ft). */
 const GRID_TICKS = 384;
 /** Half-extent of the world the grid spans, in ticks. */
 const GRID_HALF_TICKS = 7680;
-
-const VIEW_W = 640;
-const VIEW_H = 640;
-
-/** World tick X → screen px. */
-function sx(xTicks: number): number {
-  return (xTicks + ORIGIN_TICKS.x) * PX_PER_TICK;
-}
-/** World tick Y → screen px (world Y is up, screen Y is down). */
-function sy(yTicks: number): number {
-  return VIEW_H - (yTicks + ORIGIN_TICKS.y) * PX_PER_TICK;
-}
-/** Screen px → world tick X. */
-function wx(px: number): number {
-  return px / PX_PER_TICK - ORIGIN_TICKS.x;
-}
-/** Screen px → world tick Y (inverse of `sy`). */
-function wy(px: number): number {
-  return (VIEW_H - px) / PX_PER_TICK - ORIGIN_TICKS.y;
-}
-
-function gridLines(): {
-  key: string;
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-}[] {
-  const lines: {
-    key: string;
-    x1: number;
-    y1: number;
-    x2: number;
-    y2: number;
-  }[] = [];
-  for (let t = -GRID_HALF_TICKS; t <= GRID_HALF_TICKS; t += GRID_TICKS) {
-    lines.push({
-      key: `v${t}`,
-      x1: sx(t),
-      y1: sy(-GRID_HALF_TICKS),
-      x2: sx(t),
-      y2: sy(GRID_HALF_TICKS),
-    });
-    lines.push({
-      key: `h${t}`,
-      x1: sx(-GRID_HALF_TICKS),
-      y1: sy(t),
-      x2: sx(GRID_HALF_TICKS),
-      y2: sy(t),
-    });
-  }
-  return lines;
-}
-
-/** Grid lines span a fixed world extent — compute once at module load, not per render. */
-const GRID_LINES = gridLines();
-
-/** The committed footprint ring as an SVG points string, read from the engine's mirror. */
-function ringPoints(footprint: FootprintMirror): string {
-  return footprint
-    .vertices()
-    .map((v) => `${sx(v.x)},${sy(v.y)}`)
-    .join(" ");
-}
+/** Per-notch wheel zoom factor (in on scroll-up, out on scroll-down). */
+const ZOOM_STEP = 1.1;
 
 export interface PlanViewProps {
   readonly store: EngineStore;
@@ -102,24 +54,116 @@ export function PlanView({ store }: PlanViewProps) {
   const [draft, setDraft] = useState<DraftPoint | null>(null);
   const [hovering, setHovering] = useState(false);
   const [lengthInput, setLengthInput] = useState("");
+  const [camera, setCamera] = useState<PlanCamera>(DEFAULT_CAMERA);
+  const [panning, setPanning] = useState(false);
+  /** Active middle-drag pan, tracked in a ref so pointer-move doesn't re-render per frame. */
+  const panRef = useRef<{
+    pointerId: number;
+    lastPx: number;
+    lastPy: number;
+  } | null>(null);
 
   const isFootprint = store.activeTool === "footprint";
 
-  /** World point (ticks) under a pointer event, via the screen↔world transforms. */
-  const worldFromEvent = (
-    event: PointerEvent<SVGSVGElement>
-  ): { x: number; y: number } | null => {
+  /** Local screen↔world binds over the current camera, so the JSX below reads plainly. */
+  const sx = (xTicks: number): number => toScreenX(camera, xTicks);
+  const sy = (yTicks: number): number => toScreenY(camera, yTicks);
+
+  /** A pointer's position in the fixed viewBox pixel space (independent of the element's size). */
+  const viewBoxPoint = (
+    clientX: number,
+    clientY: number
+  ): { px: number; py: number } | null => {
     const svg = svgRef.current;
     if (!svg) {
       return null;
     }
     const rect = svg.getBoundingClientRect();
-    const px = ((event.clientX - rect.left) / rect.width) * VIEW_W;
-    const py = ((event.clientY - rect.top) / rect.height) * VIEW_H;
-    return { x: wx(px), y: wy(py) };
+    return {
+      px: ((clientX - rect.left) / rect.width) * VIEW_W,
+      py: ((clientY - rect.top) / rect.height) * VIEW_H,
+    };
   };
 
+  /** World point (ticks) under a pointer event, via the current camera. */
+  const worldFromEvent = (
+    event: PointerEvent<SVGSVGElement>
+  ): { x: number; y: number } | null => {
+    const vb = viewBoxPoint(event.clientX, event.clientY);
+    if (!vb) {
+      return null;
+    }
+    return { x: toWorldX(camera, vb.px), y: toWorldY(camera, vb.py) };
+  };
+
+  /** Zoom-Extents: frame the committed footprint and any in-progress picks (Shift+Z / the Fit button). */
+  const fitToContent = (): void => {
+    const points: { x: number; y: number }[] = store.pendingPicks.map((p) => ({
+      x: p.x,
+      y: p.y,
+    }));
+    if (store.footprint) {
+      for (const v of store.footprint.vertices()) {
+        points.push({ x: v.x, y: v.y });
+      }
+    }
+    setCamera(fitToBounds(boundsOf(points)));
+  };
+
+  // Scroll to zoom toward the cursor. A native, non-passive listener is required to preventDefault
+  // the page scroll; React's synthetic wheel handler is passive and can't. `setCamera`'s functional
+  // form reads the latest camera, so this attaches once.
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) {
+      return;
+    }
+    const onWheel = (event: WheelEvent): void => {
+      event.preventDefault();
+      const rect = svg.getBoundingClientRect();
+      const px = ((event.clientX - rect.left) / rect.width) * VIEW_W;
+      const py = ((event.clientY - rect.top) / rect.height) * VIEW_H;
+      const factor = event.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+      setCamera((cam) => zoomAt(cam, px, py, factor));
+    };
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+  }, []);
+
+  // Shift+Z zooms to fit (SketchUp's Zoom-Extents). A ref keeps the latest content in reach without
+  // re-subscribing; skipped while typing so it doesn't hijack the value box.
+  const fitRef = useRef(fitToContent);
+  fitRef.current = fitToContent;
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.ctrlKey || event.metaKey || event.altKey) {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.isContentEditable)) {
+        return;
+      }
+      if (event.shiftKey && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        fitRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const onPointerMove = (event: PointerEvent<SVGSVGElement>): void => {
+    const pan = panRef.current;
+    if (pan && event.pointerId === pan.pointerId) {
+      const vb = viewBoxPoint(event.clientX, event.clientY);
+      if (!vb) {
+        return;
+      }
+      setCamera((cam) => panBy(cam, vb.px - pan.lastPx, vb.py - pan.lastPy));
+      pan.lastPx = vb.px;
+      pan.lastPy = vb.py;
+      return;
+    }
     if (!isFootprint) {
       return;
     }
@@ -135,8 +179,34 @@ export function PlanView({ store }: PlanViewProps) {
     setHovering(false);
   };
 
+  const endPan = (event: PointerEvent<SVGSVGElement>): void => {
+    const pan = panRef.current;
+    if (pan && event.pointerId === pan.pointerId) {
+      svgRef.current?.releasePointerCapture(event.pointerId);
+      panRef.current = null;
+      setPanning(false);
+    }
+  };
+
   const onPointerDown = (event: PointerEvent<SVGSVGElement>): void => {
-    if (!isFootprint) {
+    // Middle-button drag pans, in any tool (SketchUp parity) — it never places geometry.
+    if (event.button === 1) {
+      event.preventDefault();
+      const vb = viewBoxPoint(event.clientX, event.clientY);
+      if (!vb) {
+        return;
+      }
+      panRef.current = {
+        pointerId: event.pointerId,
+        lastPx: vb.px,
+        lastPy: vb.py,
+      };
+      svgRef.current?.setPointerCapture(event.pointerId);
+      setPanning(true);
+      return;
+    }
+    // Only a primary click on the footprint tool places a vertex.
+    if (event.button !== 0 || !isFootprint) {
       return;
     }
     const world = worldFromEvent(event);
@@ -148,6 +218,41 @@ export function PlanView({ store }: PlanViewProps) {
     setLengthInput("");
     setDraft(store.draft(world, { axisLock: event.shiftKey }));
   };
+
+  /** Grid lines follow the camera; recomputed only when it pans or zooms. */
+  const gridLines = useMemo(() => {
+    const lines: {
+      key: string;
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+    }[] = [];
+    for (let t = -GRID_HALF_TICKS; t <= GRID_HALF_TICKS; t += GRID_TICKS) {
+      lines.push({
+        key: `v${t}`,
+        x1: toScreenX(camera, t),
+        y1: toScreenY(camera, -GRID_HALF_TICKS),
+        x2: toScreenX(camera, t),
+        y2: toScreenY(camera, GRID_HALF_TICKS),
+      });
+      lines.push({
+        key: `h${t}`,
+        x1: toScreenX(camera, -GRID_HALF_TICKS),
+        y1: toScreenY(camera, t),
+        x2: toScreenX(camera, GRID_HALF_TICKS),
+        y2: toScreenY(camera, t),
+      });
+    }
+    return lines;
+  }, [camera]);
+
+  /** The committed footprint ring as an SVG points string, read from the engine's mirror. */
+  const ringPoints = (footprint: FootprintMirror): string =>
+    footprint
+      .vertices()
+      .map((v) => `${sx(v.x)},${sy(v.y)}`)
+      .join(" ");
 
   /** The previous vertex the next segment grows from — the anchor for value entry and the rubber band. */
   const anchor = store.pendingPicks.at(-1) ?? null;
@@ -185,15 +290,18 @@ export function PlanView({ store }: PlanViewProps) {
       <svg
         aria-label="Plan drawing surface"
         className="plan"
+        onPointerCancel={endPan}
         onPointerDown={onPointerDown}
         onPointerLeave={onPointerLeave}
         onPointerMove={onPointerMove}
+        onPointerUp={endPan}
         ref={svgRef}
+        style={panning ? { cursor: "grabbing" } : undefined}
         viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
       >
         <title>Plan drawing surface</title>
         <g className="plan__grid">
-          {GRID_LINES.map((l) => (
+          {gridLines.map((l) => (
             <line key={l.key} x1={l.x1} x2={l.x2} y1={l.y1} y2={l.y2} />
           ))}
         </g>
@@ -298,6 +406,19 @@ export function PlanView({ store }: PlanViewProps) {
           <polygon className="plan__footprint" points={ringPoints(footprint)} />
         )}
       </svg>
+
+      {/* Plan navigation: scroll zooms, middle-drag pans, this fits the drawing to the view. */}
+      <div className="plan__nav">
+        <button
+          aria-keyshortcuts="Shift+Z"
+          className="plan__navbtn"
+          onClick={fitToContent}
+          title="Zoom to fit (Shift+Z)"
+          type="button"
+        >
+          Fit
+        </button>
+      </div>
 
       {/* Value-entry box (shared VCB): type an exact length, Enter to place the vertex along the
           cursor direction; Shift+Enter locks it to an axis (ADR 0012 §4). */}
