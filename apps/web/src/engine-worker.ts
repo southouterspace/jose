@@ -82,6 +82,25 @@ self.onmessage = async (event: MessageEvent<EngineRequest>): Promise<void> => {
     return;
   }
 
+  if (request.kind === "editFootprint") {
+    // Same ABI as drawFootprint, but the engine re-extrudes at the current height (ADR 0015). An
+    // empty reason means it took; a non-empty reason is a rejection (canonical state unchanged).
+    const reason = engine.editFootprint(
+      Int32Array.from(request.xs),
+      Int32Array.from(request.ys)
+    );
+    if (reason) {
+      postMessage({
+        kind: "rejected",
+        command: "editFootprint",
+        reason,
+      } satisfies EngineResponse);
+      return;
+    }
+    postSpace(engine);
+    return;
+  }
+
   if (request.kind === "pushPull") {
     // The engine validates the face + resulting height; an empty reason means it took, and the
     // snapshot reflects the new canonical volume for both panes. A non-empty reason is a rejection.

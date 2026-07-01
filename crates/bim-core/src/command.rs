@@ -12,6 +12,8 @@ pub enum Command {
     DrawWall(DrawWall),
     /// Draw (or redraw) a space footprint: a closed world-XY ring, extruded to a default height.
     DrawFootprint(DrawFootprint),
+    /// Edit the current space's footprint ring in place, re-extruding at its current height.
+    EditFootprint(EditFootprint),
     /// Push/pull the current volume's top cap by a signed tick distance.
     PushPull(PushPull),
 }
@@ -41,6 +43,17 @@ pub struct DrawWall {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct DrawFootprint {
     /// The closed ring's vertices, world-XY, ticks. `(x, y)` per vertex.
+    pub vertices: Vec<(i32, i32)>,
+}
+
+/// Edit the current space's footprint from a **closed** ring of world-XY vertices in ticks — the
+/// mutated ring after a vertex move / insert / delete, computed client-side against the render mirror.
+/// Same shape as [`DrawFootprint`], but a different intent: unlike a fresh draw (which starts flat),
+/// an edit **re-extrudes the ring at the current mass height**, so reshaping an already-pushed
+/// footprint changes the mass's plan without flattening it (ADR 0015). The closing edge is implicit.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct EditFootprint {
+    /// The edited closed ring's vertices, world-XY, ticks. `(x, y)` per vertex.
     pub vertices: Vec<(i32, i32)>,
 }
 

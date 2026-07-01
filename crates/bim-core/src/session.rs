@@ -9,7 +9,9 @@
 use crate::buffer::{
     FootprintBuffer, FootprintRow, MemberBuffer, MemberRow, NOMINAL_WIDTH, VolumeBuffer, VolumeRow,
 };
-use crate::command::{Command, CommandOutcome, DrawFootprint, DrawWall, PushPull, RejectReason};
+use crate::command::{
+    Command, CommandOutcome, DrawFootprint, DrawWall, EditFootprint, PushPull, RejectReason,
+};
 use building::{
     AssemblyKind, FramingSolver, MemberPlacement, RuleSet, SpacingAnchor, SpacingKey,
     SpacingModule, Wall, WallRole, frame_walls,
@@ -125,6 +127,7 @@ impl Session {
                 member_count: self.draw_wall(draw),
             },
             Command::DrawFootprint(draw) => self.draw_footprint(draw),
+            Command::EditFootprint(edit) => self.edit_footprint(edit),
             Command::PushPull(op) => self.push_pull(op),
         }
     }
@@ -273,9 +276,16 @@ impl Session {
     /// Extrude the current footprint ring into a prism `height` ticks tall, from the ground plane
     /// along +Z. Returns `None` for a degenerate ring the kernel refuses (or a non-positive height).
     fn extrude_footprint(&self, height: Tick) -> Option<Volume> {
+        self.extrude_with(&self.footprint, height)
+    }
+
+    /// Extrude an arbitrary ring into a prism `height` ticks tall, from the ground plane along +Z.
+    /// The ring-parameterized form of [`Session::extrude_footprint`], used by the edit path to
+    /// extrude the *candidate* (edited) ring before it becomes canonical, so a kernel refusal can't
+    /// half-apply the edit. Returns `None` for a degenerate ring or a non-positive height.
+    fn extrude_with(&self, ring: &[(i32, i32)], height: Tick) -> Option<Volume> {
         let profile = Path2D::closed(
-            self.footprint
-                .iter()
+            ring.iter()
                 .map(|&(x, y)| TickVec2::new(Tick(x), Tick(y)))
                 .collect(),
         );
@@ -286,6 +296,47 @@ impl Session {
             UnitVec3::Z,
             height,
         )
+    }
+
+    /// Edit the current space's footprint ring in place: replace it with `edit.vertices` and, when the
+    /// face has already been extruded, **re-extrude at the current mass height** so a vertex move /
+    /// insert / delete reshapes the mass instead of flattening it (ADR 0015). The client computes the
+    /// mutated ring against the render mirror and commits the whole ring; the engine validates and
+    /// re-extrudes.
+    ///
+    /// Rejects when there is nothing to edit ([`RejectReason::NoTarget`]) or the edited ring is
+    /// degenerate (the same [`validate_ring`] reasons a draw uses). The re-extrusion is computed on a
+    /// candidate first, so a kernel refusal leaves the current ring, mass, and history untouched — an
+    /// accepted edit records history, so undo restores the pre-edit shape.
+    fn edit_footprint(&mut self, edit: EditFootprint) -> CommandOutcome {
+        if self.footprint.is_empty() {
+            return CommandOutcome::Rejected {
+                reason: RejectReason::NoTarget,
+            };
+        }
+        if let Err(reason) = validate_ring(&edit.vertices) {
+            return CommandOutcome::Rejected { reason };
+        }
+        // Re-extrude the edited ring at the current height (if any) before mutating — a refusal here
+        // aborts the edit whole rather than committing a ring the mass can't follow.
+        let next_volume = match self.volume.as_ref().map(|v| v.height) {
+            Some(height) => match self.extrude_with(&edit.vertices, height) {
+                Some(volume) => Some(volume),
+                None => {
+                    return CommandOutcome::Rejected {
+                        reason: RejectReason::ZeroArea,
+                    };
+                }
+            },
+            None => None,
+        };
+        self.record_history();
+        self.footprint = edit.vertices;
+        self.volume = next_volume;
+        self.rewrite_space_buffers();
+        CommandOutcome::Accepted {
+            member_count: self.buffer.len(),
+        }
     }
 
     /// Push/pull the current space's top cap by a signed tick distance. Rejects a non-top
@@ -718,6 +769,155 @@ mod tests {
         );
         assert_eq!(s.footprint_count(), 3);
         assert_eq!(s.volume_count(), 0);
+    }
+
+    #[test]
+    fn edit_footprint_reshapes_and_preserves_mass_height() {
+        use crate::layout::{footprint as fp, volume as vol};
+        let ft = 384;
+        let mut s = Session::new();
+        apply_ok(&mut s, Command::DrawFootprint(square_ring()));
+
+        // Push the flat face into a 3ft mass.
+        let height = 3 * ft;
+        apply_ok(
+            &mut s,
+            Command::PushPull(PushPull {
+                volume_id: 1,
+                face_index: TOP_FACE,
+                distance: height,
+            }),
+        );
+        assert_eq!(s.volume_count(), 1);
+
+        // Move one vertex (widen the square): the ring changes, the mass keeps its height — the ADR
+        // 0015 guarantee that an edit reshapes the mass instead of flattening it.
+        let edited = vec![(0, 0), (14 * ft, 0), (10 * ft, 12 * ft), (0, 12 * ft)];
+        apply_ok(
+            &mut s,
+            Command::EditFootprint(EditFootprint {
+                vertices: edited.clone(),
+            }),
+        );
+        assert_eq!(s.footprint_count(), 4);
+        assert_eq!(read_i32(s.footprint_bytes(), fp::X_OFFSET, 1), 14 * ft);
+        // Still a mass, still 3ft tall.
+        assert_eq!(s.volume_count(), 1);
+        assert_eq!(read_i32(s.volume_bytes(), vol::HEIGHT_OFFSET, 0), height);
+    }
+
+    #[test]
+    fn edit_footprint_on_flat_face_stays_flat() {
+        let ft = 384;
+        let mut s = Session::new();
+        apply_ok(&mut s, Command::DrawFootprint(square_ring()));
+        assert_eq!(s.volume_count(), 0);
+
+        // Editing a face that was never pushed leaves it flat (no volume conjured).
+        apply_ok(
+            &mut s,
+            Command::EditFootprint(EditFootprint {
+                vertices: vec![(0, 0), (14 * ft, 0), (10 * ft, 12 * ft), (0, 12 * ft)],
+            }),
+        );
+        assert_eq!(s.footprint_count(), 4);
+        assert_eq!(s.volume_count(), 0);
+    }
+
+    #[test]
+    fn edit_footprint_can_insert_and_delete_vertices() {
+        let ft = 384;
+        let mut s = Session::new();
+        apply_ok(&mut s, Command::DrawFootprint(square_ring()));
+
+        // Insert a vertex (5-gon), then delete one (back to 4).
+        apply_ok(
+            &mut s,
+            Command::EditFootprint(EditFootprint {
+                vertices: vec![
+                    (0, 0),
+                    (10 * ft, 0),
+                    (10 * ft, 6 * ft),
+                    (10 * ft, 12 * ft),
+                    (0, 12 * ft),
+                ],
+            }),
+        );
+        assert_eq!(s.footprint_count(), 5);
+        apply_ok(
+            &mut s,
+            Command::EditFootprint(EditFootprint {
+                vertices: vec![(0, 0), (10 * ft, 0), (10 * ft, 12 * ft), (0, 12 * ft)],
+            }),
+        );
+        assert_eq!(s.footprint_count(), 4);
+    }
+
+    #[test]
+    fn edit_footprint_rejects_degenerate_edits_and_leaves_state() {
+        let ft = 384;
+        let mut s = Session::new();
+
+        // Nothing drawn yet: nothing to edit.
+        apply_rejected(
+            &mut s,
+            Command::EditFootprint(EditFootprint {
+                vertices: vec![(0, 0), (ft, 0), (ft, ft)],
+            }),
+            RejectReason::NoTarget,
+        );
+
+        apply_ok(&mut s, Command::DrawFootprint(square_ring()));
+
+        // A delete down to two vertices is not a polygon — refused, ring unchanged.
+        apply_rejected(
+            &mut s,
+            Command::EditFootprint(EditFootprint {
+                vertices: vec![(0, 0), (10 * ft, 0)],
+            }),
+            RejectReason::TooFewVertices,
+        );
+        // A self-crossing edit (bowtie) is refused too.
+        apply_rejected(
+            &mut s,
+            Command::EditFootprint(EditFootprint {
+                vertices: vec![(0, 0), (ft, ft), (ft, 0), (0, ft)],
+            }),
+            RejectReason::SelfIntersecting,
+        );
+        // The original square still stands.
+        assert_eq!(s.footprint_count(), 4);
+    }
+
+    #[test]
+    fn undo_restores_the_pre_edit_ring_and_mass() {
+        use crate::layout::{footprint as fp, volume as vol};
+        let ft = 384;
+        let height = 3 * ft;
+        let mut s = Session::new();
+        apply_ok(&mut s, Command::DrawFootprint(square_ring()));
+        apply_ok(
+            &mut s,
+            Command::PushPull(PushPull {
+                volume_id: 1,
+                face_index: TOP_FACE,
+                distance: height,
+            }),
+        );
+
+        apply_ok(
+            &mut s,
+            Command::EditFootprint(EditFootprint {
+                vertices: vec![(0, 0), (14 * ft, 0), (10 * ft, 12 * ft), (0, 12 * ft)],
+            }),
+        );
+        assert_eq!(read_i32(s.footprint_bytes(), fp::X_OFFSET, 1), 14 * ft);
+
+        // Undo the edit: the pre-edit ring and the mass (still 3ft) both return.
+        assert!(s.undo());
+        assert_eq!(read_i32(s.footprint_bytes(), fp::X_OFFSET, 1), 10 * ft);
+        assert_eq!(s.volume_count(), 1);
+        assert_eq!(read_i32(s.volume_bytes(), vol::HEIGHT_OFFSET, 0), height);
     }
 
     #[test]

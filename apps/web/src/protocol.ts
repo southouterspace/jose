@@ -24,6 +24,15 @@ export type EngineRequest =
       readonly ys: readonly number[];
     }
   | {
+      /** Edit the current space's footprint from the mutated ring of plan vertices (ticks). Mirrors
+       *  wasm `editFootprint(xs, ys)`: parallel columns, the closing edge implicit. Unlike
+       *  `drawFootprint`, the engine re-extrudes at the current mass height rather than flattening it
+       *  (ADR 0015); a degenerate edit is rejected and canonical state is unchanged. */
+      readonly kind: "editFootprint";
+      readonly xs: readonly number[];
+      readonly ys: readonly number[];
+    }
+  | {
       /** Push/pull a volume's top cap. Mirrors wasm `pushPull(volumeId, faceIndex, distance)`:
        *  `faceIndex` must be the kernel's `TOP_FACE`; `distance` is a signed tick delta. The engine
        *  validates the face and rejects a non-positive resulting height. */
@@ -62,6 +71,6 @@ export type EngineResponse =
       /** A command the engine refused (a degenerate footprint, an out-of-model push/pull). Canonical
        *  state is unchanged; `reason` is the stable code (`RejectReason::code`) the UI maps to copy. */
       readonly kind: "rejected";
-      readonly command: "drawFootprint" | "pushPull";
+      readonly command: "drawFootprint" | "editFootprint" | "pushPull";
       readonly reason: string;
     };

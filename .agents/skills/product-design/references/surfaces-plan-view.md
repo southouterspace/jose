@@ -85,11 +85,25 @@ avoid "outline", "polygon", "sketch", "perimeter"._
   a primary click commits it; a click on empty space (or `Esc`) clears.
 - **Selection is presentation state**, held in the store and keyed by ring index — never engine
   geometry ([ADR 0013](../../../docs/adr/0013-selection-model.md)). It is cleared on every recompute,
-  so it can't outlive the ring it names. This is the precondition for footprint editing (still to come).
+  so it can't outlive the ring it names. It is the precondition for **footprint editing** (below).
 - Cues render **over** the canonical footprint: the committed selection warm and solid, the hover cue
-  quieter and dashed. The status bar names what's picked ("Selected an edge — Esc to clear"). Use the
-  canonical nouns — *vertex*, *edge*, *footprint*, *selection* (`apps/web/CONTEXT.md`) — not
-  point/node/handle or side/segment.
+  quieter and dashed. The status bar names what's picked and the verb it enables ("Selected a vertex —
+  drag to move, Delete to remove, Esc to clear"). Use the canonical nouns — *vertex*, *edge*,
+  *footprint*, *selection* (`apps/web/CONTEXT.md`) — not point/node/handle or side/segment.
+
+## Footprint editing (P2 #9)
+
+- The select tool is also the **edit** tool, on one rule: **a click selects, a drag edits**. Press-drag
+  a **vertex** to move it; press-drag an **edge** to insert a vertex on it and place it; a plain click
+  still just selects (ADR 0013 behavior intact). With a vertex selected, **Delete**/**Backspace** removes
+  it — **guarded to keep ≥ 3 vertices** (a delete at three is refused with the toast "A footprint needs
+  at least 3 corners"). Whole-footprint move/copy is **out of scope** here (P2 #10).
+- The drag is **transient client state**: a preview ring (the mirror's vertices with one moved/inserted)
+  renders in place of the canonical footprint, snapping through `plan-snap` (endpoint/midpoint/on-edge,
+  the dragged vertex excluded so it can't snap to itself); only on release does the committed ring cross
+  as an **`EditFootprint`** command. The engine validates it and **re-extrudes at the current mass
+  height**, so editing a pushed footprint reshapes the mass instead of flattening it
+  ([ADR 0015](../../../docs/adr/0015-footprint-editing-command.md)). Undo is free (`Session::apply`).
 
 ## What to get right here
 
@@ -106,10 +120,12 @@ avoid "outline", "polygon", "sketch", "perimeter"._
   entry (`< angle`) exists (P1 #6/#7), but the inference engine still doesn't *snap* to angles
   (e.g. parallel/perpendicular/45°) — only to existing vertices' rows/columns. And committed
   dimensions are read-only labels: there's no click-a-label-to-edit yet.
-- **No footprint editing after close.** Selection (P0 #3) exists, but selecting a vertex/edge doesn't
-  yet let you move it — no vertex drag, insert, or delete on a committed footprint.
 - **Degenerate geometry is rejected on commit, not previewed.** A zero-area or self-intersecting ring
-  is refused with a toast when it closes (P0 #4); there's still no client-side warning *while* drawing.
+  is refused with a toast when it closes (P0 #4) — and likewise when an **edit** produces one (a move
+  that self-crosses, a collapse to zero area); there's still no client-side warning *while* dragging.
+- **Edit snapping is point-snaps only.** A dragged vertex snaps to endpoints/midpoints/on-edge + the
+  grid, but Shift/arrow **axis-lock during an edit** and a whole-**edge slide** (move both endpoints)
+  are deferred (ADR 0015); and an edit clears the selection on recompute rather than re-deriving it.
 
-Pan/zoom + Zoom-Extents (P0 #2) and plan selection (P0 #3), which used to be gaps here, are now built.
-See `coverage-gaps.md` and `resilience.md` before designing into the rest.
+Pan/zoom + Zoom-Extents (P0 #2), plan selection (P0 #3), and footprint editing (P2 #9), which used to
+be gaps here, are now built. See `coverage-gaps.md` and `resilience.md` before designing into the rest.

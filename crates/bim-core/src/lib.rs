@@ -30,5 +30,7 @@ pub mod layout;
 pub use buffer::{
     FootprintBuffer, FootprintRow, MemberBuffer, MemberRow, NOMINAL_WIDTH, VolumeBuffer, VolumeRow,
 };
-pub use command::{Command, CommandOutcome, DrawFootprint, DrawWall, PushPull, RejectReason};
+pub use command::{
+    Command, CommandOutcome, DrawFootprint, DrawWall, EditFootprint, PushPull, RejectReason,
+};
 pub use session::Session;

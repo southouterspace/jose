@@ -8,6 +8,7 @@
 
 import { useEffect, useRef } from "react";
 import { useEngineStore } from "./engine-store";
+import { deleteVertex } from "./footprint-edit";
 import { PlanView } from "./plan-view";
 import { ThreeView } from "./three-view";
 import { type ChromeState, TOOL_CHROME, toolChrome } from "./tool-chrome";
@@ -53,7 +54,7 @@ function shortcutToolKey(
 
 /** The single action a keydown triggers. */
 type KeyAction =
-  | { readonly type: "cancelDraw" | "clear" | "redo" | "undo" }
+  | { readonly type: "cancelDraw" | "clear" | "deleteVertex" | "redo" | "undo" }
   | { readonly type: "activate"; readonly key: string };
 
 /** Classify a keydown into the one action it triggers (or `null`). Pure, so the listener stays a thin
@@ -75,6 +76,14 @@ function keyAction(
     // A half-drawn footprint is the thing Escape backs out of first ("…or Esc to cancel"); with no
     // draw in progress it clears the selection instead.
     return state.pendingPicks > 0 ? { type: "cancelDraw" } : { type: "clear" };
+  }
+  if (event.key === "Delete" || event.key === "Backspace") {
+    // Delete removes a selected vertex (P2 #9). Only a vertex has a delete verb; while typing, the key
+    // stays with the value box (a Backspace edits the entry, never the footprint).
+    if (typing) {
+      return null;
+    }
+    return state.selectedKind === "vertex" ? { type: "deleteVertex" } : null;
   }
   if (typing) {
     return null;
@@ -100,8 +109,23 @@ export function App() {
   // re-subscribing every render. `activate`/`undo`/`redo` are stable (useCallback in the store).
   const stateRef = useRef(chromeState);
   stateRef.current = chromeState;
-  const { activate, undo, redo, dismissRejection, clearSelection, cancelDraw } =
-    store;
+  // The current ring + selection for the Delete handler, kept in a ref so the once-mounted key
+  // listener reads the latest without re-subscribing (like `stateRef`).
+  const editRef = useRef({
+    footprint: store.footprint,
+    selection: store.selection,
+  });
+  editRef.current = { footprint: store.footprint, selection: store.selection };
+  const {
+    activate,
+    undo,
+    redo,
+    dismissRejection,
+    clearSelection,
+    cancelDraw,
+    editFootprint,
+    flagRejection,
+  } = store;
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       const typing = isTypingTarget(event.target as HTMLElement | null);
@@ -124,13 +148,36 @@ export function App() {
         case "clear":
           clearSelection();
           break;
+        case "deleteVertex": {
+          event.preventDefault();
+          const { footprint, selection } = editRef.current;
+          if (footprint && selection?.kind === "vertex") {
+            const ring = footprint.vertices().map((v) => ({ x: v.x, y: v.y }));
+            const next = deleteVertex(ring, selection.index);
+            if (next === null) {
+              flagRejection("A footprint needs at least 3 corners.");
+            } else {
+              editFootprint(next);
+              clearSelection();
+            }
+          }
+          break;
+        }
         default:
           activate(action.key);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [activate, undo, redo, clearSelection, cancelDraw]);
+  }, [
+    activate,
+    undo,
+    redo,
+    clearSelection,
+    cancelDraw,
+    editFootprint,
+    flagRejection,
+  ]);
 
   // Auto-dismiss the rejection toast a few seconds after it appears; re-armed per rejection via the
   // nonce (an identical repeat still resets the timer). Manual dismiss + successful commands also

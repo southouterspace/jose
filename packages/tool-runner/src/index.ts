@@ -36,6 +36,17 @@ export interface DrawFootprintCommand {
   readonly ys: readonly number[];
 }
 
+/** Edit a committed footprint's ring in place from the mutated set of plan vertices. Mirrors the
+ *  engine's `editFootprint(xs, ys)` ABI — parallel tick columns, the closing edge implicit — the same
+ *  shape as `drawFootprint`, but a different intent: the engine **re-extrudes at the current mass
+ *  height** instead of flattening it (ADR 0015). Like `pushPull`, it is a Select-tool *gesture*
+ *  dispatched directly by the view, not a pick the `ToolRunner` collects. */
+export interface EditFootprintCommand {
+  readonly kind: "editFootprint";
+  readonly xs: readonly number[];
+  readonly ys: readonly number[];
+}
+
 /** Push/pull a volume's top cap to a new height. Mirrors the engine's `pushPull(volumeId,
  *  faceIndex, distance)` ABI: `distance` is a signed tick delta (positive raises the mass, negative
  *  lowers it); `faceIndex` is the kernel's canonical face (`TOP_FACE`) the gesture resolved to.
@@ -47,8 +58,14 @@ export interface PushPullCommand {
   readonly volumeId: number;
 }
 
-/** The immutable intents the runner can emit (one variant per modeled tool). */
-export type Command = DrawFootprintCommand | DrawWallCommand | PushPullCommand;
+/** The immutable intents the app can dispatch. Most are emitted by the `ToolRunner` from picks
+ *  (`drawFootprint`, `drawWall`); `pushPull` and `editFootprint` are Select/3D-view *gestures*
+ *  dispatched directly by a view, sharing this union so the store's `dispatch` handles them uniformly. */
+export type Command =
+  | DrawFootprintCommand
+  | DrawWallCommand
+  | EditFootprintCommand
+  | PushPullCommand;
 
 /**
  * Map a vertical pointer drag (screen pixels) to a signed push/pull tick distance.

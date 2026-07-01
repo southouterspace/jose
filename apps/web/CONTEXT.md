@@ -44,8 +44,12 @@ _Avoid_: outline, polygon, sketch, perimeter.
 
 **Vertex** / **Edge**:
 The corner points of a **footprint** ring and the straight segments between them. They are the
-selectable sub-parts of the footprint in the **plan view**; `edge` _i_ runs from vertex _i_ to
-vertex _i_+1 (the last edge closes the ring back to vertex 0).
+selectable — and, once a footprint is closed, **editable** — sub-parts of the footprint in the
+**plan view**; `edge` _i_ runs from vertex _i_ to vertex _i_+1 (the last edge closes the ring back to
+vertex 0). With the **select tool** you **drag a vertex** to move it or **drag an edge** to insert a
+vertex on it, and **Delete** a selected vertex to remove it (a ring keeps ≥ 3 vertices) — each
+commits the edited ring, which the engine re-extrudes at the current height (footprint editing,
+[ADR 0015](../../docs/adr/0015-footprint-editing-command.md)).
 _Avoid_: point, node, handle (vertex); side, line, segment (edge).
 
 **Push/pull**:
@@ -96,8 +100,9 @@ _Avoid_: box, rect, room.
 The user's current pick in the **plan view** — a **footprint**, one of its **vertices**, or one of
 its **edges**. Presentation state only: it lives in the client store, is keyed by position in the
 canonical ring, and is cleared whenever the engine recomputes. It *names* geometry; it never owns or
-mutates it (the one-direction rule, [ADR 0013](../../docs/adr/0013-selection-model.md)). The
-precondition for footprint editing, which is deferred.
+mutates it (the one-direction rule, [ADR 0013](../../docs/adr/0013-selection-model.md)). It is what
+**footprint editing** acts on: a click selects, a drag edits (move a **vertex**, insert one on an
+**edge**), and Delete removes a selected vertex ([ADR 0015](../../docs/adr/0015-footprint-editing-command.md)).
 _Avoid_: highlight, focus, active element, active object.
 
 **Snap** (inference):

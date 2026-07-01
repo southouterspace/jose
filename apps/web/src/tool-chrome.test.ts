@@ -41,10 +41,17 @@ describe("tool-chrome registry", () => {
       selectedKind: null,
     };
 
-    test("push/pull is disabled without a mass, enabled with one", () => {
+    test("push/pull is disabled with no footprint, enabled once one is closed", () => {
       const pushpull = toolChrome("pushpull");
+      // No footprint yet (a half-drawn 2-pick outline doesn't count).
       expect(pushpull?.enabled(base)).toBe(false);
-      expect(pushpull?.enabled({ ...base, hasMass: true })).toBe(true);
+      expect(pushpull?.enabled({ ...base, footprintVertices: 2 })).toBe(false);
+      // A closed footprint enables it — the first push/pull is how the flat face becomes a mass, so
+      // it must be reachable *before* a mass exists (not gated on hasMass).
+      expect(pushpull?.enabled({ ...base, footprintVertices: 3 })).toBe(true);
+      expect(
+        pushpull?.enabled({ ...base, footprintVertices: 4, hasMass: true })
+      ).toBe(true);
     });
 
     test("footprint is always available", () => {
@@ -66,13 +73,19 @@ describe("tool-chrome registry", () => {
       selectedKind: null,
     };
 
-    test("nothing selected: prompts what to click", () => {
-      expect(select?.status(base)).toContain("click a vertex, edge, or");
+    test("nothing selected: prompts to select and edit", () => {
+      expect(select?.status(base)).toContain("drag a vertex to move it");
     });
 
-    test("something selected: names it and how to clear", () => {
+    test("a selected vertex names the move + delete verbs", () => {
+      expect(select?.status({ ...base, selectedKind: "vertex" })).toBe(
+        "Selected a vertex — drag to move, Delete to remove, Esc to clear"
+      );
+    });
+
+    test("a selected edge names the insert verb", () => {
       expect(select?.status({ ...base, selectedKind: "edge" })).toBe(
-        "Selected an edge — Esc to clear"
+        "Selected an edge — drag it to add a vertex, Esc to clear"
       );
     });
   });

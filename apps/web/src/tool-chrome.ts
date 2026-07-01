@@ -86,19 +86,21 @@ function rectangleStatus(state: ChromeState): string {
   return "Ready — Rectangle tool active; click the first corner";
 }
 
-/** How each selectable piece reads in the status bar. */
-const SELECTION_NOUN: Record<SelectionKind, string> = {
-  footprint: "the footprint",
-  vertex: "a vertex",
-  edge: "an edge",
+/** The Select tool's status line once a piece is picked — each names the edit verb it now enables
+ *  (P2 #9): a vertex moves or deletes, an edge splits into a new vertex, the footprint has no verb yet
+ *  (whole-footprint move is P2 #10). */
+const SELECTED_STATUS: Record<SelectionKind, string> = {
+  vertex: "Selected a vertex — drag to move, Delete to remove, Esc to clear",
+  edge: "Selected an edge — drag it to add a vertex, Esc to clear",
+  footprint: "Selected the footprint — Esc to clear",
 };
 
-/** The Select tool's status line: what's picked, or how to pick. */
+/** The Select tool's status line: what's picked and what you can do to it, or how to pick + edit. */
 function selectStatus(state: ChromeState): string {
   if (state.selectedKind) {
-    return `Selected ${SELECTION_NOUN[state.selectedKind]} — Esc to clear`;
+    return SELECTED_STATUS[state.selectedKind];
   }
-  return "Select — click a vertex, edge, or the footprint to select it";
+  return "Select — click to select; drag a vertex to move it, or an edge to add one";
 }
 
 /** The user-facing tools, in toolbar order. */
@@ -140,7 +142,12 @@ export const TOOL_CHROME: readonly ToolChrome[] = [
     surfaces: ["3d"],
     value: "height",
     runnerBacked: false,
-    enabled: (state) => state.hasMass,
+    // Enabled once a **closed footprint** exists — its top cap is what push/pull acts on, whether the
+    // face is still flat (the first extrude lifts it into a mass) or already a mass (later pushes grow
+    // or shrink it). `footprintVertices` counts the canonical, closed committed ring (the mid-draw
+    // polyline lives in `pendingPicks`), so this can't fire on a half-drawn outline. Gating on
+    // `hasMass` was the bug: you need push/pull to *make* the first mass, so it can't require one.
+    enabled: (state) => state.footprintVertices >= 3,
     status: () =>
       "Push/Pull active — drag the top cap in 3D to set the mass height",
   },

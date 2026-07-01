@@ -279,6 +279,14 @@ body {
   stroke-width: 2;
 }
 
+/* An in-progress edit (a vertex being dragged / inserted): a dashed, brighter outline so the
+   transient edited ring reads as not-yet-committed until the drag is released (P2 #9). */
+.plan__footprint--editing {
+  fill: rgb(110 168 254 / 12%);
+  stroke: #9ec5ff;
+  stroke-dasharray: 6 4;
+}
+
 /* Selection cues (committed pick) — a warm highlight over the canonical ring. */
 .plan__sel {
   pointer-events: none;
