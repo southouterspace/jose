@@ -53,11 +53,12 @@ function shortcutToolKey(
 
 /** The single action a keydown triggers. */
 type KeyAction =
-  | { readonly type: "clear" | "redo" | "undo" }
+  | { readonly type: "cancelDraw" | "clear" | "redo" | "undo" }
   | { readonly type: "activate"; readonly key: string };
 
 /** Classify a keydown into the one action it triggers (or `null`). Pure, so the listener stays a thin
- *  dispatch: chords first, then Escape-clears, then a single-key tool shortcut. */
+ *  dispatch: chords first, then Escape (cancel an in-progress draw, else clear the selection), then a
+ *  single-key tool shortcut. */
 function keyAction(
   event: KeyboardEvent,
   typing: boolean,
@@ -68,7 +69,12 @@ function keyAction(
     return typing ? null : { type: chord };
   }
   if (event.key === "Escape") {
-    return typing ? null : { type: "clear" };
+    if (typing) {
+      return null;
+    }
+    // A half-drawn footprint is the thing Escape backs out of first ("…or Esc to cancel"); with no
+    // draw in progress it clears the selection instead.
+    return state.pendingPicks > 0 ? { type: "cancelDraw" } : { type: "clear" };
   }
   if (typing) {
     return null;
@@ -94,7 +100,8 @@ export function App() {
   // re-subscribing every render. `activate`/`undo`/`redo` are stable (useCallback in the store).
   const stateRef = useRef(chromeState);
   stateRef.current = chromeState;
-  const { activate, undo, redo, dismissRejection, clearSelection } = store;
+  const { activate, undo, redo, dismissRejection, clearSelection, cancelDraw } =
+    store;
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       const typing = isTypingTarget(event.target as HTMLElement | null);
@@ -111,6 +118,9 @@ export function App() {
           event.preventDefault();
           redo();
           break;
+        case "cancelDraw":
+          cancelDraw();
+          break;
         case "clear":
           clearSelection();
           break;
@@ -120,7 +130,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [activate, undo, redo, clearSelection]);
+  }, [activate, undo, redo, clearSelection, cancelDraw]);
 
   // Auto-dismiss the rejection toast a few seconds after it appears; re-armed per rejection via the
   // nonce (an identical repeat still resets the timer). Manual dismiss + successful commands also

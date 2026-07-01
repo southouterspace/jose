@@ -42,6 +42,12 @@ The closed 2D profile drawn in plan (a kernel `Path2D`) that bounds a **space**.
 inward (see _outward framing_).
 _Avoid_: outline, polygon, sketch, perimeter.
 
+**Vertex** / **Edge**:
+The corner points of a **footprint** ring and the straight segments between them. They are the
+selectable sub-parts of the footprint in the **plan view**; `edge` _i_ runs from vertex _i_ to
+vertex _i_+1 (the last edge closes the ring back to vertex 0).
+_Avoid_: point, node, handle (vertex); side, line, segment (edge).
+
 **Push/pull**:
 The 3D-view gesture that extrudes a footprint's top cap to set the mass's height — the coupling
 between the plan (2D footprint) and the 3D (solid). In the MVP it is **vertical, top-cap only**;
@@ -76,5 +82,14 @@ _Avoid_: model, store, cache, snapshot (the snapshot is the *bytes*; the mirror 
 
 **Tool**:
 A picking state machine that turns gestures in a viewport into a `Command` (the footprint tool in
-plan; the push/pull tool in 3D). The **active tool** is the one currently receiving picks.
+plan; the push/pull tool in 3D) — or, for the **select tool**, into a **selection** rather than a
+command. The **active tool** is the one currently receiving picks.
 _Avoid_: mode, gesture handler.
+
+**Selection**:
+The user's current pick in the **plan view** — a **footprint**, one of its **vertices**, or one of
+its **edges**. Presentation state only: it lives in the client store, is keyed by position in the
+canonical ring, and is cleared whenever the engine recomputes. It *names* geometry; it never owns or
+mutates it (the one-direction rule, [ADR 0013](../../docs/adr/0013-selection-model.md)). The
+precondition for footprint editing, which is deferred.
+_Avoid_: highlight, focus, active element, active object.

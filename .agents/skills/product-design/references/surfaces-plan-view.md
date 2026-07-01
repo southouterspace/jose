@@ -23,12 +23,30 @@ avoid "outline", "polygon", "sketch", "perimeter"._
 
 ## Coordinates and units
 
-- World is in **ticks**; the view maps `PX_PER_TICK = 0.05` over a fixed `640×640` viewBox, with the
-  world origin offset so the drawing area sits in view (`ORIGIN_TICKS`). World Y is up; screen Y is
-  down (`sy`/`wy` invert it). Keep these transforms paired — a new readout must convert back through
-  `wx`/`wy`, not assume screen pixels.
-- The grid is **1ft spacing** (`GRID_TICKS = 384`) across a `±7680`-tick half-extent. Anything the
-  user displays should be feet/inches, not ticks (`copy.md`).
+- World is in **ticks**; the plan maps them into a fixed `640×640` viewBox through a **`PlanCamera`**
+  (`plan-camera.ts`) held in view state — a `scale` (px per tick) plus an `offsetX`/`offsetY`. World Y
+  is up, screen Y is down. Every rendered coordinate goes through `toScreenX`/`toScreenY`; a readout
+  that needs the world point under a pointer must invert through `toWorldX`/`toWorldY` (or the
+  `worldOf` helper), not assume screen pixels.
+- The view is **navigable** (P0 #2): scroll zooms toward the cursor, middle-drag pans, and the **Fit**
+  button / **Shift+Z** run Zoom-Extents (framing the footprint + in-progress picks). The camera clamps
+  its zoom so the view can't invert or vanish.
+- The grid is **1ft spacing** (`GRID_TICKS = 384`) across a `±7680`-tick half-extent, redrawn per
+  camera. Anything the user displays should be feet/inches, not ticks (`copy.md`).
+
+## The select interaction (P0 #3)
+
+- The **select tool** (shortcut `S`) picks a piece of the committed footprint under the cursor — a
+  **vertex**, an **edge**, or the whole **footprint** — resolved by a pure screen-space `hitTest`
+  (`plan-selection.ts`) in priority order vertex → edge → face. Hover previews what a click would pick;
+  a primary click commits it; a click on empty space (or `Esc`) clears.
+- **Selection is presentation state**, held in the store and keyed by ring index — never engine
+  geometry ([ADR 0013](../../../docs/adr/0013-selection-model.md)). It is cleared on every recompute,
+  so it can't outlive the ring it names. This is the precondition for footprint editing (still to come).
+- Cues render **over** the canonical footprint: the committed selection warm and solid, the hover cue
+  quieter and dashed. The status bar names what's picked ("Selected an edge — Esc to clear"). Use the
+  canonical nouns — *vertex*, *edge*, *footprint*, *selection* (`apps/web/CONTEXT.md`) — not
+  point/node/handle or side/segment.
 
 ## What to get right here
 
@@ -41,12 +59,13 @@ avoid "outline", "polygon", "sketch", "perimeter"._
 
 ## Coverage gaps (don't claim these work)
 
-- **No pan/zoom.** The viewport is a fixed window on the world; a footprint drawn outside the
-  `±7680`-tick span renders off-view with no way to reach it.
-- **No snapping / no dimensions readout.** Picks land at the raw cursor tick; there's no grid snap,
-  no length/angle guide, and no editable dimension. The plan intends snapping; it isn't there yet.
-- **No footprint editing after close.** You can draw a new ring, but there's no vertex drag, insert,
-  or delete on a committed footprint.
-- **No degenerate-geometry feedback.** A self-intersecting or zero-area ring isn't flagged client-side.
+- **No grid snap / no angle guide.** Picks land at the raw cursor tick. A live length readout
+  (`plan__dim`) and alignment guides to existing vertices exist, but there's no grid snapping, no
+  angle guide, and no editable dimension. The plan intends snapping; it isn't there yet.
+- **No footprint editing after close.** Selection (P0 #3) exists, but selecting a vertex/edge doesn't
+  yet let you move it — no vertex drag, insert, or delete on a committed footprint.
+- **Degenerate geometry is rejected on commit, not previewed.** A zero-area or self-intersecting ring
+  is refused with a toast when it closes (P0 #4); there's still no client-side warning *while* drawing.
 
-See `coverage-gaps.md` and `resilience.md` before designing into any of these.
+Pan/zoom + Zoom-Extents (P0 #2) and plan selection (P0 #3), which used to be gaps here, are now built.
+See `coverage-gaps.md` and `resilience.md` before designing into the rest.
