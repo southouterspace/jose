@@ -56,8 +56,12 @@ mass reads as a solid.
 
 - **No selection / no hover affordance** — there's no indication the top cap is grabbable until you
   try, and no other pickable element.
-- **No numeric height input** — height is gesture-only; there's no typed-dimension path (and if you
-  add one, it needs validation per `resilience.md`).
+- **Typed height entry exists, but only once a mass exists.** The value box (`ValueBox`, docked when
+  the active tool's `value` grammar is `height`, ADR 0012 §4) accepts an absolute height in
+  feet/inches and commits it as a signed push/pull delta. It's gated by the tool's enablement
+  (Push/Pull needs a mass), so you still can't type a height on a flat, not-yet-extruded face — that
+  first extrude is gesture-only. Invalid input is silently ignored (no rejected-value treatment yet,
+  `resilience.md`).
 - **No any-face push/pull** — top-cap vertical only by decision (ADR 0007 §3); don't imply otherwise.
 - **No framing/studs** — massing solids only in the MVP.
 

@@ -14,8 +14,8 @@
  */
 
 import type { FootprintMirror, VolumeMirror } from "@jose/render-mirror";
-import { pushPullDistance } from "@jose/tool-runner";
-import { useEffect, useRef } from "react";
+import { formatLength, parseLength, pushPullDistance } from "@jose/tool-runner";
+import { useEffect, useRef, useState } from "react";
 import {
   Color,
   DirectionalLight,
@@ -41,6 +41,8 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { EngineStore } from "./engine-store";
 import { pushPullReadout } from "./hud";
 import { frameMass, TICKS_PER_UNIT } from "./mass-tessellation";
+import { toolChrome } from "./tool-chrome";
+import { ValueBox } from "./value-box";
 
 /** The kernel's top cap face index (`crates/geometry-kernel/src/brep.rs` `TOP_FACE`). The 3D view
  *  references the engine's named face — it never invents one (ADR 0008 §3). */
@@ -281,6 +283,8 @@ export function ThreeView({ store }: ThreeViewProps) {
   toolRef.current = store.activeTool;
   const pushPullRef = useRef(store.pushPull);
   pushPullRef.current = store.pushPull;
+  // Typed-height entry (the value box's "height" grammar, ADR 0012 §4) — React state, not per-frame.
+  const [heightInput, setHeightInput] = useState("");
 
   // Mount-once effect: build the imperative scene and the render loop.
   useEffect(() => {
@@ -474,6 +478,23 @@ export function ThreeView({ store }: ThreeViewProps) {
     rebuildMass(handle, store.footprint, store.volume);
   }, [store.footprint, store.volume]);
 
+  // The value box docks here when the active tool's grammar is "height" (push/pull): type an exact
+  // mass height and the drag's absolute target becomes a signed distance from the current height.
+  const hasMass = store.volume !== null && store.volume.count >= 1;
+  const current = hasMass ? store.volume?.row(0) : undefined;
+  const currentHeightTicks = current?.height ?? 0;
+  const currentVolumeId = current?.volumeId ?? VOLUME_ID;
+  const showHeightEntry = toolChrome(store.activeTool)?.value === "height";
+
+  const submitHeight = (): void => {
+    const target = parseLength(heightInput);
+    if (target !== null) {
+      // parseLength yields an absolute height; push/pull carries a signed delta from where we are.
+      store.pushPull(currentVolumeId, TOP_FACE, target - currentHeightTicks);
+    }
+    setHeightInput("");
+  };
+
   return (
     <div className="three" ref={mountRef}>
       {/* The 3D HUD layer (ADR 0012): a cursor-following push/pull distance readout. Pointer-inert
@@ -484,6 +505,17 @@ export function ThreeView({ store }: ThreeViewProps) {
         hidden
         ref={readoutRef}
       />
+      {showHeightEntry && (
+        <ValueBox
+          ariaLabel="Mass height in feet and inches"
+          label="Height"
+          onCancel={() => setHeightInput("")}
+          onChange={setHeightInput}
+          onSubmit={submitHeight}
+          placeholder={formatLength(currentHeightTicks)}
+          value={heightInput}
+        />
+      )}
     </div>
   );
 }
